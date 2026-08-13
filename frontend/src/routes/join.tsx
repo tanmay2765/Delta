@@ -19,6 +19,7 @@ type JoinSearch = {
 };
 
 export const Route = createFileRoute("/join")({
+  ssr: false,
   validateSearch: (search: Record<string, unknown>): JoinSearch => ({
     code: typeof search.code === "string" ? search.code : undefined,
     id: typeof search.id === "string" ? search.id : undefined,

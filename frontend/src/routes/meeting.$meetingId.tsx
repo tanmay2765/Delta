@@ -25,6 +25,7 @@ import {
 import type { JoinRequest, Meeting, Participant } from "@/lib/types";
 
 export const Route = createFileRoute("/meeting/$meetingId")({
+  ssr: false,
   component: MeetingRoom,
 });
 
@@ -35,6 +36,7 @@ function MeetingRoom() {
 
   const [session, setSession] = useState<MeetingSession | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [meetingEnded, setMeetingEnded] = useState(false);
   const [canUseMedia, setCanUseMedia] = useState(false);
 
@@ -71,9 +73,14 @@ function MeetingRoom() {
     async function bootstrap() {
       const stored = getMeetingSession(meetingId);
       if (!stored?.participantId || !stored.sessionToken) {
-        navigate({ to: "/join", search: { id: meetingId } });
+        navigate({ to: "/join", search: { id: meetingId.replace(/\D/g, "") } });
         return;
       }
+
+      // Enter immediately using stored session (client-only).
+      setSession(stored);
+      setCanUseMedia(true);
+      setSessionReady(true);
 
       try {
         const resumed = await api.resumeSession(
@@ -84,9 +91,7 @@ function MeetingRoom() {
         if (cancelled) return;
 
         if (!resumed.participantId || !resumed.sessionToken) {
-          clearMeetingSession(meetingId);
-          navigate({ to: "/join", search: { id: meetingId } });
-          return;
+          throw new Error("Session expired");
         }
 
         const nextSession: MeetingSession = {
@@ -100,7 +105,7 @@ function MeetingRoom() {
         setCanUseMedia(Boolean(resumed.isHost || resumed.cameraAllowed || resumed.micAllowed));
         setCameraOn(Boolean(resumed.cameraOn && (resumed.cameraAllowed || resumed.isHost)));
         setMicOn(Boolean(resumed.micOn && (resumed.micAllowed || resumed.isHost)));
-        setSessionReady(true);
+        setBootstrapError(null);
 
         if (resumed.isHost) {
           try {
@@ -111,10 +116,12 @@ function MeetingRoom() {
           }
         }
       } catch {
-        if (!cancelled) {
-          clearMeetingSession(meetingId);
-          navigate({ to: "/join", search: { id: meetingId } });
-        }
+        if (cancelled) return;
+        // Session invalid — send back to join instead of spinning forever.
+        clearMeetingSession(meetingId);
+        setSessionReady(false);
+        setBootstrapError("Your meeting session expired. Please join again.");
+        navigate({ to: "/join", search: { id: meetingId.replace(/\D/g, "") } });
       }
     }
 
@@ -124,11 +131,12 @@ function MeetingRoom() {
     };
   }, [meetingId, navigate, queryClient, setCameraOn, setMicOn]);
 
-  const { data: meeting, isLoading } = useQuery({
+  const { data: meeting, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["meeting", meetingId, session?.participantId],
     queryFn: () => api.getMeeting(meetingId, session?.participantId),
     enabled: sessionReady && Boolean(session?.participantId),
     refetchInterval: sessionReady ? 15000 : false,
+    retry: 2,
   });
 
   const handleMeetingUpdate = useCallback(
@@ -390,18 +398,51 @@ function MeetingRoom() {
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   };
 
-  useEffect(() => {
-    if (canUseMedia && !hasStream && !preJoinSkipped) {
-      void requestAccess();
-    }
-  }, [canUseMedia, hasStream, preJoinSkipped, requestAccess]);
-
-  if (!sessionReady || isLoading || !meeting || !session) {
+  if (!sessionReady || !session) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          <p className="text-muted-foreground">Reconnecting to meeting...</p>
+          <p className="text-muted-foreground">Connecting to meeting...</p>
+          {bootstrapError && <p className="text-sm text-destructive">{bootstrapError}</p>}
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading && !meeting) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <p className="text-muted-foreground">Loading meeting...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isError || !meeting) {
+    const message =
+      error instanceof Error ? error.message : "Could not load meeting. Check your connection.";
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-4 text-center">
+        <p className="text-lg font-semibold">Unable to enter meeting</p>
+        <p className="max-w-md text-sm text-muted-foreground">{message}</p>
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground"
+          >
+            Retry
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate({ to: "/join", search: { id: meetingId.replace(/\D/g, "") } })}
+            className="rounded-lg border px-4 py-2 text-sm"
+          >
+            Re-join
+          </button>
         </div>
       </div>
     );

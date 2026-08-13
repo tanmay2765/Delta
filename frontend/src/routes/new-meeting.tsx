@@ -17,6 +17,7 @@ import { Video } from "lucide-react";
 import type { CreatedMeeting, JoinPolicy } from "@/lib/types";
 
 export const Route = createFileRoute("/new-meeting")({
+  ssr: false,
   component: NewMeeting,
 });
 
@@ -52,22 +53,32 @@ function NewMeeting() {
     createMeetingMutation.mutate();
   };
 
+  const [enterError, setEnterError] = useState("");
+
   const handleEnterMeeting = async () => {
     if (!createdMeeting) return;
-    const joined = await api.joinMeeting(createdMeeting.meetingId, hostName, { micOn, cameraOn });
-    if (!joined.participantId || !joined.sessionToken) return;
+    setEnterError("");
+    try {
+      const joined = await api.joinMeeting(createdMeeting.meetingId, hostName, { micOn, cameraOn });
+      if (!joined.participantId || !joined.sessionToken) {
+        setEnterError("Could not enter meeting. Please try again.");
+        return;
+      }
 
-    setMeetingSession(createdMeeting.meetingId, {
-      participantId: joined.participantId,
-      displayName: hostName,
-      isHost: true,
-      sessionToken: joined.sessionToken,
-    });
+      setMeetingSession(createdMeeting.meetingId, {
+        participantId: joined.participantId,
+        displayName: hostName,
+        isHost: true,
+        sessionToken: joined.sessionToken,
+      });
 
-    navigate({
-      to: "/meeting/$meetingId",
-      params: { meetingId: createdMeeting.meetingId },
-    });
+      navigate({
+        to: "/meeting/$meetingId",
+        params: { meetingId: createdMeeting.meetingId },
+      });
+    } catch (err) {
+      setEnterError(err instanceof Error ? err.message : "Could not enter meeting.");
+    }
   };
 
   return (
@@ -155,13 +166,20 @@ function NewMeeting() {
       </div>
 
       {createdMeeting && (
-        <MeetingReadyModal
-          meeting={createdMeeting}
-          title="Meeting Ready"
-          primaryLabel="Enter Meeting"
-          onPrimary={handleEnterMeeting}
-          onDismiss={() => setCreatedMeeting(null)}
-        />
+        <>
+          {enterError && (
+            <p className="fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-lg bg-destructive px-4 py-2 text-sm text-white">
+              {enterError}
+            </p>
+          )}
+          <MeetingReadyModal
+            meeting={createdMeeting}
+            title="Meeting Ready"
+            primaryLabel="Enter Meeting"
+            onPrimary={handleEnterMeeting}
+            onDismiss={() => setCreatedMeeting(null)}
+          />
+        </>
       )}
     </AppShell>
   );
