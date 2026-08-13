@@ -30,8 +30,8 @@ export function ToggleRow({
       >
         <span
           className={cn(
-            "absolute top-0.5 h-5 w-5 rounded-full bg-primary-foreground transition-transform",
-            checked ? "translate-x-6" : "translate-x-0.5",
+            "absolute top-0.5 h-5 w-5 rounded-full bg-primary-foreground transition-[left]",
+            checked ? "left-[1.375rem]" : "left-0.5",
           )}
         />
       </button>

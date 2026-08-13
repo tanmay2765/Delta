@@ -10,8 +10,8 @@ import { GlassCard } from "@/components/ui/glass-card";
 import { MeetingReadyModal } from "@/components/meetings/meeting-ready-modal";
 import { ToggleRow } from "@/components/meetings/toggle-row";
 import { api } from "@/lib/api";
-import { DIRECTORY } from "@/lib/mock-data";
-import type { CreatedMeeting } from "@/lib/types";
+import { displayNameFromUser, getStoredUser } from "@/lib/auth-storage";
+import type { CreatedMeeting, JoinPolicy } from "@/lib/types";
 
 export const Route = createFileRoute("/schedule")({
   component: ScheduleMeeting,
@@ -25,7 +25,9 @@ function ScheduleMeeting() {
   const [time, setTime] = useState<string>("10:00");
   const [duration, setDuration] = useState("60");
   const [timezone, setTimezone] = useState("America/New_York");
-  const [waitingRoom, setWaitingRoom] = useState(true);
+  const user = getStoredUser();
+  const hostName = displayNameFromUser(user, "Host");
+  const [waitingRoom, setWaitingRoom] = useState(false);
   const [createdMeeting, setCreatedMeeting] = useState<CreatedMeeting | null>(null);
 
   const scheduleMutation = useMutation({
@@ -33,12 +35,12 @@ function ScheduleMeeting() {
       api.scheduleMeeting({
         title,
         description,
+        host: hostName,
         date,
         startTime: time,
         durationMinutes: parseInt(duration, 10),
         timezone,
-        participantIds: [],
-        waitingRoom,
+        joinPolicy: waitingRoom ? "approval_required" : "open",
       }),
     onSuccess: (data) => {
       setCreatedMeeting(data);

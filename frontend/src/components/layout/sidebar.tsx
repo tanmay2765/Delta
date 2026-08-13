@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Calendar, Home, LogOut, Users, Video } from "lucide-react";
+import { Calendar, Home, LogOut, User, Users, Video } from "lucide-react";
 import { DeltaLogo } from "@/components/ui/delta-logo";
 import { cn } from "@/lib/utils";
 
@@ -8,6 +8,7 @@ export const NAV_ITEMS = [
   { to: "/new-meeting", label: "New meeting", icon: Video },
   { to: "/schedule", label: "Schedule", icon: Calendar },
   { to: "/join", label: "Join", icon: Users },
+  { to: "/profile", label: "Profile", icon: User },
 ] as const;
 
 export function Sidebar() {

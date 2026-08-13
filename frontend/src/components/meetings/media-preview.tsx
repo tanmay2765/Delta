@@ -1,15 +1,13 @@
 import { Mic, MicOff, Video, VideoOff } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { DeltaAvatar } from "@/components/ui/delta-avatar";
 import { cn } from "@/lib/utils";
 
-/**
- * Local device preview. Real camera capture is not wired up (no media backend
- * requirement yet) — this renders a faithful placeholder driven by React state.
- */
 export function MediaPreview({
   name,
   cameraOn,
   micOn,
+  stream,
   onToggleCamera,
   onToggleMic,
   statusLabel = "Ready to join",
@@ -18,11 +16,20 @@ export function MediaPreview({
   name: string;
   cameraOn: boolean;
   micOn: boolean;
+  stream?: MediaStream | null;
   onToggleCamera: () => void;
   onToggleMic: () => void;
   statusLabel?: string;
   className?: string;
 }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.srcObject = cameraOn && stream ? stream : null;
+  }, [cameraOn, stream]);
+
   return (
     <div
       className={cn(
@@ -30,13 +37,25 @@ export function MediaPreview({
         className,
       )}
     >
-      <div className="grid aspect-video place-items-center bg-linear-to-br from-secondary to-rail">
-        {cameraOn ? (
-          <DeltaAvatar name={name} size="xl" />
+      <div className="relative aspect-video bg-linear-to-br from-secondary to-rail">
+        {cameraOn && stream ? (
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="h-full w-full object-cover mirror"
+          />
         ) : (
-          <div className="flex flex-col items-center gap-2 text-muted-foreground">
-            <VideoOff className="h-8 w-8" />
-            <span className="text-sm">Camera is off</span>
+          <div className="grid h-full w-full place-items-center">
+            {cameraOn ? (
+              <DeltaAvatar name={name} size="xl" />
+            ) : (
+              <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                <VideoOff className="h-8 w-8" />
+                <span className="text-sm">Camera is off</span>
+              </div>
+            )}
           </div>
         )}
       </div>

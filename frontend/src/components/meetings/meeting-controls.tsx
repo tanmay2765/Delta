@@ -17,6 +17,8 @@ import type { ReactNode } from "react";
 export interface MeetingControlsProps {
   micOn: boolean;
   cameraOn: boolean;
+  micAllowed: boolean;
+  cameraAllowed: boolean;
   sharing: boolean;
   recording: boolean;
   participantsOpen: boolean;
@@ -37,14 +39,16 @@ export function MeetingControls(props: MeetingControlsProps) {
   return (
     <div className="glass-panel mx-auto flex w-full max-w-3xl items-center justify-center gap-1.5 overflow-x-auto rounded-2xl bg-card/70 px-3 py-3 sm:gap-3 sm:px-5">
       <ControlButton
-        label={props.micOn ? "Mute" : "Unmute"}
+        label={props.micAllowed ? (props.micOn ? "Mute" : "Unmute") : "Mic blocked by host"}
         active={props.micOn}
+        disabled={!props.micAllowed}
         onClick={props.onToggleMic}
         icon={props.micOn ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
       />
       <ControlButton
-        label="Camera"
+        label={props.cameraAllowed ? "Camera" : "Camera blocked by host"}
         active={props.cameraOn}
+        disabled={!props.cameraAllowed}
         onClick={props.onToggleCamera}
         icon={props.cameraOn ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
       />
@@ -94,6 +98,7 @@ function ControlButton({
   label,
   icon,
   active,
+  disabled,
   onClick,
   badge,
   badgeTone = "primary",
@@ -101,6 +106,7 @@ function ControlButton({
   label: string;
   icon: ReactNode;
   active: boolean;
+  disabled?: boolean;
   onClick: () => void;
   badge?: number | undefined;
   badgeTone?: "primary" | "danger";
@@ -109,15 +115,17 @@ function ControlButton({
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-pressed={active}
       aria-label={label}
-      className="group flex shrink-0 flex-col items-center gap-1"
+      title={label}
+      className="group flex shrink-0 flex-col items-center gap-1 disabled:cursor-not-allowed disabled:opacity-40"
     >
       <span
         className={cn(
           "relative grid h-11 w-12 place-items-center rounded-xl transition-colors sm:h-12 sm:w-14",
           active ? "bg-primary/25 text-primary-glow" : "bg-secondary text-muted-foreground",
-          "group-hover:brightness-125",
+          !disabled && "group-hover:brightness-125",
         )}
       >
         {icon}

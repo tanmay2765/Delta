@@ -3,14 +3,20 @@ import { useState } from "react";
 import { AuthLayout, SocialButtons } from "@/components/auth/auth-layout";
 import { DeltaInput } from "@/components/ui/delta-input";
 import { DeltaButton } from "@/components/ui/delta-button";
+import { api } from "@/lib/api";
+import { setAuth } from "@/lib/auth-storage";
 import { Mail, Lock, User } from "lucide-react";
 
 export const Route = createFileRoute("/signup")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    redirect: typeof search.redirect === "string" ? search.redirect : undefined,
+  }),
   component: Signup,
 });
 
 function Signup() {
   const navigate = useNavigate();
+  const { redirect } = Route.useSearch();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -26,11 +32,23 @@ function Signup() {
     }
     setError("");
     setIsLoading(true);
-    // Simulate signup delay
-    setTimeout(() => {
+    try {
+      const response = await api.signup({
+        email,
+        password,
+        full_name: name,
+      });
+      setAuth(response.access_token, response.user);
+      if (redirect) {
+        window.location.href = redirect;
+      } else {
+        navigate({ to: "/" });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create account");
+    } finally {
       setIsLoading(false);
-      navigate({ to: "/" });
-    }, 800);
+    }
   };
 
   return (

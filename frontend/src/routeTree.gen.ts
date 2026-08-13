@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as JoinRouteImport } from './routes/join'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as NewMeetingRouteImport } from './routes/new-meeting'
+import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as ScheduleRouteImport } from './routes/schedule'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as MeetingMeetingIdRouteImport } from './routes/meeting.$meetingId'
@@ -37,6 +38,11 @@ const NewMeetingRoute = NewMeetingRouteImport.update({
   path: '/new-meeting',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ScheduleRoute = ScheduleRouteImport.update({
   id: '/schedule',
   path: '/schedule',
@@ -58,6 +64,7 @@ export interface FileRoutesByFullPath {
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
   '/new-meeting': typeof NewMeetingRoute
+  '/profile': typeof ProfileRoute
   '/schedule': typeof ScheduleRoute
   '/signup': typeof SignupRoute
   '/meeting/$meetingId': typeof MeetingMeetingIdRoute
@@ -67,6 +74,7 @@ export interface FileRoutesByTo {
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
   '/new-meeting': typeof NewMeetingRoute
+  '/profile': typeof ProfileRoute
   '/schedule': typeof ScheduleRoute
   '/signup': typeof SignupRoute
   '/meeting/$meetingId': typeof MeetingMeetingIdRoute
@@ -77,6 +85,7 @@ export interface FileRoutesById {
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
   '/new-meeting': typeof NewMeetingRoute
+  '/profile': typeof ProfileRoute
   '/schedule': typeof ScheduleRoute
   '/signup': typeof SignupRoute
   '/meeting/$meetingId': typeof MeetingMeetingIdRoute
@@ -88,6 +97,7 @@ export interface FileRouteTypes {
     | '/join'
     | '/login'
     | '/new-meeting'
+    | '/profile'
     | '/schedule'
     | '/signup'
     | '/meeting/$meetingId'
@@ -97,6 +107,7 @@ export interface FileRouteTypes {
     | '/join'
     | '/login'
     | '/new-meeting'
+    | '/profile'
     | '/schedule'
     | '/signup'
     | '/meeting/$meetingId'
@@ -106,6 +117,7 @@ export interface FileRouteTypes {
     | '/join'
     | '/login'
     | '/new-meeting'
+    | '/profile'
     | '/schedule'
     | '/signup'
     | '/meeting/$meetingId'
@@ -116,6 +128,7 @@ export interface RootRouteChildren {
   JoinRoute: typeof JoinRoute
   LoginRoute: typeof LoginRoute
   NewMeetingRoute: typeof NewMeetingRoute
+  ProfileRoute: typeof ProfileRoute
   ScheduleRoute: typeof ScheduleRoute
   SignupRoute: typeof SignupRoute
   MeetingMeetingIdRoute: typeof MeetingMeetingIdRoute
@@ -151,6 +164,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NewMeetingRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/schedule': {
       id: '/schedule'
       path: '/schedule'
@@ -180,6 +200,7 @@ const rootRouteChildren: RootRouteChildren = {
   JoinRoute: JoinRoute,
   LoginRoute: LoginRoute,
   NewMeetingRoute: NewMeetingRoute,
+  ProfileRoute: ProfileRoute,
   ScheduleRoute: ScheduleRoute,
   SignupRoute: SignupRoute,
   MeetingMeetingIdRoute: MeetingMeetingIdRoute,

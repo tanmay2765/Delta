@@ -3,26 +3,46 @@ import { useState } from "react";
 import { AuthLayout, SocialButtons } from "@/components/auth/auth-layout";
 import { DeltaInput } from "@/components/ui/delta-input";
 import { DeltaButton } from "@/components/ui/delta-button";
+import { api } from "@/lib/api";
+import { setAuth } from "@/lib/auth-storage";
 import { Mail, Lock } from "lucide-react";
 
+type LoginSearch = {
+  redirect?: string;
+};
+
 export const Route = createFileRoute("/login")({
+  validateSearch: (search: Record<string, unknown>): LoginSearch => ({
+    redirect: typeof search.redirect === "string" ? search.redirect : undefined,
+  }),
   component: Login,
 });
 
 function Login() {
   const navigate = useNavigate();
+  const { redirect } = Route.useSearch();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
     setIsLoading(true);
-    // Simulate login delay
-    setTimeout(() => {
+    try {
+      const response = await api.login({ email, password });
+      setAuth(response.access_token, response.user);
+      if (redirect) {
+        window.location.href = redirect;
+      } else {
+        navigate({ to: "/" });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sign in failed");
+    } finally {
       setIsLoading(false);
-      navigate({ to: "/" });
-    }, 800);
+    }
   };
 
   return (
@@ -33,6 +53,7 @@ function Login() {
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        {error && <div className="text-sm text-destructive">{error}</div>}
         <DeltaInput
           type="email"
           placeholder="Email address"
@@ -80,6 +101,7 @@ function Login() {
         Don't have an account?{" "}
         <Link
           to="/signup"
+          search={redirect ? { redirect } : undefined}
           className="text-primary hover:text-primary-glow font-medium transition-colors"
         >
           Sign up

@@ -156,3 +156,7 @@
     display: none;
   }
 }
+
+@utility mirror {
+  transform: scaleX(-1);
+}

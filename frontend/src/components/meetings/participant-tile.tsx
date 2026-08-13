@@ -1,4 +1,5 @@
 import { MicOff, MonitorUp } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { DeltaAvatar } from "@/components/ui/delta-avatar";
 import { cn } from "@/lib/utils";
 import type { Participant } from "@/lib/types";
@@ -7,11 +8,24 @@ export function ParticipantTile({
   participant,
   large,
   onClick,
+  stream,
+  className,
 }: {
   participant: Participant;
   large?: boolean;
   onClick?: () => void;
+  stream?: MediaStream | null;
+  className?: string;
 }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const showLiveVideo = participant.isSelf && participant.cameraOn && stream;
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.srcObject = showLiveVideo ? stream : null;
+  }, [showLiveVideo, stream]);
+
   return (
     <button
       type="button"
@@ -19,14 +33,23 @@ export function ParticipantTile({
       aria-label={`Focus ${participant.name}`}
       className={cn(
         "group relative overflow-hidden rounded-2xl border bg-linear-to-br from-secondary to-rail text-left transition-all",
-        large ? "aspect-video w-full" : "aspect-video w-full",
+        large ? "absolute inset-0 h-full w-full" : "aspect-video w-full",
         participant.speaking
           ? "border-primary/70 shadow-[0_0_28px_-6px_var(--primary)]"
           : "border-glass-border",
+        className,
       )}
     >
-      <span className="grid h-full w-full place-items-center">
-        {participant.cameraOn ? (
+      <span className="absolute inset-0 grid place-items-center">
+        {showLiveVideo ? (
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="h-full w-full object-cover mirror"
+          />
+        ) : participant.cameraOn ? (
           <DeltaAvatar name={participant.name} size={large ? "xl" : "lg"} />
         ) : (
           <span className="flex flex-col items-center gap-2 text-muted-foreground">

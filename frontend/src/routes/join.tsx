@@ -1,69 +1,192 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/app-shell";
+import { MediaPermissionPrompt } from "@/components/meetings/media-permission-prompt";
 import { MediaPreview } from "@/components/meetings/media-preview";
 import { DeltaInput } from "@/components/ui/delta-input";
 import { DeltaButton } from "@/components/ui/delta-button";
 import { GlassCard } from "@/components/ui/glass-card";
+import { useLocalMedia } from "@/hooks/useLocalMedia";
 import { api } from "@/lib/api";
-import { CURRENT_USER } from "@/lib/mock-data";
+import { displayNameFromUser, getStoredUser, getToken } from "@/lib/auth-storage";
+import { getMeetingSession, setMeetingSession } from "@/lib/meeting-session";
 import { Link2 } from "lucide-react";
 
+type JoinSearch = {
+  code?: string;
+  id?: string;
+};
+
 export const Route = createFileRoute("/join")({
+  validateSearch: (search: Record<string, unknown>): JoinSearch => ({
+    code: typeof search.code === "string" ? search.code : undefined,
+    id: typeof search.id === "string" ? search.id : undefined,
+  }),
   component: JoinMeeting,
 });
 
 function JoinMeeting() {
   const navigate = useNavigate();
-  const [meetingId, setMeetingId] = useState("");
-  const [name, setName] = useState(CURRENT_USER.name);
-  const [cameraOn, setCameraOn] = useState(true);
-  const [micOn, setMicOn] = useState(true);
+  const { code, id: presetId } = Route.useSearch();
+  const user = getStoredUser();
+  const [meetingId, setMeetingId] = useState(presetId ?? "");
+  const [name, setName] = useState(displayNameFromUser(user, ""));
   const [error, setError] = useState("");
+  const [awaitingApproval, setAwaitingApproval] = useState(false);
+  const [resolvedMeetingId, setResolvedMeetingId] = useState<string | null>(null);
+  const { stream, cameraOn, micOn, setCameraOn, setMicOn, requestAccess, hasStream, isRequesting, error: mediaError } = useLocalMedia(true, true);
+
+  useEffect(() => {
+    if (!getToken()) {
+      const redirectPath = code
+        ? `/join?code=${encodeURIComponent(code)}`
+        : presetId
+          ? `/join?id=${encodeURIComponent(presetId)}`
+          : "/join";
+      navigate({ to: "/login", search: { redirect: redirectPath } });
+    }
+  }, [code, presetId, navigate]);
+
+  const inviteQuery = useQuery({
+    queryKey: ["invite", code],
+    queryFn: () => api.getMeetingByInviteCode(code!),
+    enabled: Boolean(code),
+  });
+
+  useEffect(() => {
+    if (inviteQuery.data) {
+      setMeetingId(inviteQuery.data.id);
+    }
+  }, [inviteQuery.data]);
 
   const joinMutation = useMutation({
-    mutationFn: (id: string) => api.joinMeeting(id, name),
+    mutationFn: (id: string) =>
+      api.joinMeeting(id, name.trim(), { micOn, cameraOn }),
     onSuccess: (data) => {
-      if (data.ok) {
-        navigate({
-          to: "/meeting/$meetingId",
-          params: { meetingId: data.meetingId },
-        });
-      } else {
-        setError("Failed to join meeting. Please check the ID and try again.");
+      if (data.status === "awaiting_approval") {
+        setResolvedMeetingId(data.meetingId);
+        setAwaitingApproval(true);
+        return;
       }
+
+      if (!data.participantId || !data.sessionToken) {
+        setError("Could not join meeting.");
+        return;
+      }
+
+      setMeetingSession(data.meetingId, {
+        participantId: data.participantId,
+        displayName: name.trim(),
+        isHost: Boolean(data.isHost),
+        sessionToken: data.sessionToken,
+      });
+      navigate({
+        to: "/meeting/$meetingId",
+        params: { meetingId: data.meetingId },
+      });
     },
-    onError: () => {
-      setError("Meeting not found or you don't have permission to join.");
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : "Meeting not found or you can't join.");
     },
   });
+
+  const waitingMeetingId = resolvedMeetingId ?? meetingId.replace(/\D/g, "");
+  const admissionQuery = useQuery({
+    queryKey: ["admission", waitingMeetingId, name],
+    queryFn: async () => {
+      const meeting = await api.getMeeting(waitingMeetingId);
+      const admitted = meeting.participants.some(
+        (p) => p.name.toLowerCase() === name.trim().toLowerCase(),
+      );
+      return { admitted, meeting };
+    },
+    enabled: awaitingApproval && waitingMeetingId.length >= 9 && Boolean(name.trim()),
+    refetchInterval: 3000,
+  });
+
+  useEffect(() => {
+    if (!admissionQuery.data?.admitted || !waitingMeetingId) return;
+
+    void (async () => {
+      const result = await api.joinMeeting(waitingMeetingId, name.trim(), { micOn, cameraOn });
+      if (!result.participantId || !result.sessionToken) return;
+
+      setMeetingSession(waitingMeetingId, {
+        participantId: result.participantId,
+        displayName: name.trim(),
+        isHost: Boolean(result.isHost),
+        sessionToken: result.sessionToken,
+      });
+      navigate({
+        to: "/meeting/$meetingId",
+        params: { meetingId: waitingMeetingId },
+      });
+    })();
+  }, [admissionQuery.data?.admitted, waitingMeetingId, name, micOn, cameraOn, navigate]);
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
-    // Extract meeting ID if user pasted a full link
-    let idToJoin = meetingId.trim();
-    if (idToJoin.includes("/meeting/")) {
-      idToJoin = idToJoin.split("/meeting/")[1] || "";
+    let raw = meetingId.trim();
+    if (raw.includes("/meeting/")) {
+      raw = raw.split("/meeting/")[1]?.split(/[?#]/)[0] || raw;
+    }
+    if (raw.includes("code=")) {
+      raw = raw.split("code=")[1]?.split("&")[0]?.trim() || raw;
     }
 
-    // Simple validation
-    idToJoin = idToJoin.replace(/\D/g, "");
-    if (idToJoin.length < 9) {
-      setError("Please enter a valid 9-digit Meeting ID.");
+    const digitsOnly = raw.replace(/\D/g, "");
+    const identifier =
+      digitsOnly.length >= 9 ? digitsOnly : code?.trim() || raw.trim();
+
+    if (!identifier) {
+      setError("Please enter a valid meeting ID or invite link.");
       return;
     }
 
-    joinMutation.mutate(idToJoin);
+    if (!name.trim()) {
+      setError("Please enter your name.");
+      return;
+    }
+
+    const sessionKey = digitsOnly.length >= 9 ? digitsOnly : identifier;
+    const existing = getMeetingSession(sessionKey);
+    if (existing?.participantId && existing.sessionToken) {
+      navigate({
+        to: "/meeting/$meetingId",
+        params: { meetingId: digitsOnly.length >= 9 ? digitsOnly : inviteQuery.data?.id ?? digitsOnly },
+      });
+      return;
+    }
+
+    joinMutation.mutate(identifier);
   };
+
+  if (awaitingApproval) {
+    return (
+      <AppShell title="Waiting to Join">
+        <div className="mx-auto max-w-lg pt-12 text-center">
+          <GlassCard className="p-8">
+            <h2 className="text-xl font-semibold">Waiting for host to let you in</h2>
+            <p className="mt-3 text-muted-foreground">
+              The host has enabled approval for this meeting. You'll join automatically once
+              admitted.
+            </p>
+            <div className="mt-6 flex justify-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+            </div>
+          </GlassCard>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell title="Join Meeting">
       <div className="mx-auto max-w-4xl pt-4">
         <div className="grid gap-8 lg:grid-cols-2">
-          {/* Left Column: Form */}
           <GlassCard className="p-6">
             <h2 className="text-xl font-semibold tracking-tight mb-6">Join with ID or Link</h2>
             <form onSubmit={handleJoin} className="flex flex-col gap-5">
@@ -74,7 +197,7 @@ function JoinMeeting() {
                   setMeetingId(e.target.value);
                   setError("");
                 }}
-                placeholder="e.g. 123 456 789 or delta.app/meeting/..."
+                placeholder="e.g. 123 456 789 or invite link"
                 error={error}
                 icon={<Link2 className="h-4 w-4" />}
                 required
@@ -106,17 +229,25 @@ function JoinMeeting() {
             </form>
           </GlassCard>
 
-          {/* Right Column: Preview */}
           <div className="flex flex-col gap-4">
             <h2 className="text-xl font-semibold tracking-tight">Audio & Video</h2>
-            <MediaPreview
-              name={name || "You"}
-              cameraOn={cameraOn}
-              micOn={micOn}
-              onToggleCamera={() => setCameraOn(!cameraOn)}
-              onToggleMic={() => setMicOn(!micOn)}
-              statusLabel={joinMutation.isPending ? "Connecting..." : "Ready to join"}
-            />
+            {!hasStream ? (
+              <MediaPermissionPrompt
+                onEnable={() => void requestAccess()}
+                isRequesting={isRequesting}
+                error={mediaError}
+              />
+            ) : (
+              <MediaPreview
+                name={name || "You"}
+                cameraOn={cameraOn}
+                micOn={micOn}
+                stream={stream}
+                onToggleCamera={() => setCameraOn(!cameraOn)}
+                onToggleMic={() => setMicOn(!micOn)}
+                statusLabel={joinMutation.isPending ? "Connecting..." : "Ready to join"}
+              />
+            )}
           </div>
         </div>
       </div>

@@ -1,6 +1,8 @@
 import { Bell, Mic, Search } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { DeltaAvatar } from "@/components/ui/delta-avatar";
-import { CURRENT_USER } from "@/lib/mock-data";
+import { displayNameFromUser, getStoredUser, type StoredUser } from "@/lib/auth-storage";
 
 function greeting() {
   const h = new Date().getHours();
@@ -10,7 +12,14 @@ function greeting() {
 }
 
 export function Topbar({ title }: { title: string }) {
-  const firstName = CURRENT_USER.name.split(" ")[0];
+  const [user, setUser] = useState<StoredUser | null>(null);
+
+  useEffect(() => {
+    setUser(getStoredUser());
+  }, []);
+
+  const displayName = displayNameFromUser(user, "Guest");
+  const firstName = displayName.split(" ")[0];
 
   return (
     <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 xl:flex xl:justify-between">
@@ -42,10 +51,14 @@ export function Topbar({ title }: { title: string }) {
           <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-primary" />
         </button>
 
-        <div className="flex items-center gap-2.5">
-          <DeltaAvatar name={CURRENT_USER.name} size="md" />
-          <span className="hidden text-sm font-medium sm:block">{CURRENT_USER.name}</span>
-        </div>
+        <Link
+          to="/profile"
+          className="flex items-center gap-2.5 rounded-full py-1 pr-1 transition-colors hover:bg-glass"
+          aria-label="Open profile"
+        >
+          <DeltaAvatar name={displayName} size="md" />
+          <span className="hidden text-sm font-medium sm:block">{displayName}</span>
+        </Link>
       </div>
     </header>
   );
