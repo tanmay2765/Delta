@@ -13,6 +13,7 @@ import { useLocalMedia } from "@/hooks/useLocalMedia";
 import { api } from "@/lib/api";
 import { displayNameFromUser, getStoredUser } from "@/lib/auth-storage";
 import { setMeetingSession } from "@/lib/meeting-session";
+import { setSharedMediaStream } from "@/lib/shared-media";
 import { Video } from "lucide-react";
 import type { CreatedMeeting, JoinPolicy } from "@/lib/types";
 
@@ -71,6 +72,8 @@ function NewMeeting() {
         isHost: true,
         sessionToken: joined.sessionToken,
       });
+
+      if (stream?.active) setSharedMediaStream(stream);
 
       navigate({
         to: "/meeting/$meetingId",

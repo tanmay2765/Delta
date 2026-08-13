@@ -4,7 +4,7 @@ import { DeltaAvatar } from "@/components/ui/delta-avatar";
 import { cn } from "@/lib/utils";
 import type { Participant } from "@/lib/types";
 
-function hasLiveTrack(stream: MediaStream | null | undefined, kind: "audio" | "video") {
+function streamHasLiveTrack(stream: MediaStream | null | undefined, kind: "audio" | "video") {
   return Boolean(
     stream?.getTracks().some((track) => track.kind === kind && track.readyState === "live"),
   );
@@ -26,14 +26,14 @@ export function ParticipantTile({
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  const hasRemoteVideo = !participant.isSelf && hasLiveTrack(stream, "video");
-  const hasRemoteAudio = !participant.isSelf && hasLiveTrack(stream, "audio");
-  const showLiveVideo = participant.isSelf
-    ? participant.cameraOn && Boolean(stream)
-    : hasRemoteVideo || (participant.cameraOn && Boolean(stream));
+  const hasLiveVideo = streamHasLiveTrack(stream, "video");
+  const hasLiveAudio = streamHasLiveTrack(stream, "audio");
 
-  const playRemoteAudio =
-    !participant.isSelf && participant.micOn && (hasRemoteAudio || Boolean(stream));
+  const showLiveVideo = participant.isSelf
+    ? participant.cameraOn && hasLiveVideo
+    : hasLiveVideo;
+
+  const playRemoteAudio = !participant.isSelf && hasLiveAudio;
 
   useEffect(() => {
     const video = videoRef.current;
@@ -57,10 +57,8 @@ export function ParticipantTile({
 
   const resumePlayback = () => {
     if (participant.isSelf) return;
-    const video = videoRef.current;
-    const audio = audioRef.current;
-    if (video?.srcObject) void video.play().catch(() => {});
-    if (audio?.srcObject) void audio.play().catch(() => {});
+    void videoRef.current?.play().catch(() => {});
+    void audioRef.current?.play().catch(() => {});
   };
 
   return (
@@ -89,8 +87,6 @@ export function ParticipantTile({
             muted={participant.isSelf}
             className={cn("h-full w-full object-cover", participant.isSelf && "mirror")}
           />
-        ) : participant.cameraOn && !hasRemoteVideo ? (
-          <DeltaAvatar name={participant.name} size={large ? "xl" : "lg"} />
         ) : (
           <span className="flex flex-col items-center gap-2 text-muted-foreground">
             <DeltaAvatar
@@ -98,7 +94,7 @@ export function ParticipantTile({
               size={large ? "lg" : "md"}
               className="opacity-60"
             />
-            <span className="text-xs">Camera off</span>
+            <span className="text-xs">{participant.cameraOn ? "Connecting video…" : "Camera off"}</span>
           </span>
         )}
       </span>
@@ -114,7 +110,9 @@ export function ParticipantTile({
         </span>
         <span className="flex shrink-0 items-center gap-1.5">
           {participant.sharingScreen && <MonitorUp className="h-3.5 w-3.5 text-primary-glow" />}
-          {!participant.micOn && <MicOff className="h-3.5 w-3.5 text-destructive" />}
+          {!participant.micOn && !hasLiveAudio && (
+            <MicOff className="h-3.5 w-3.5 text-destructive" />
+          )}
         </span>
       </span>
     </button>

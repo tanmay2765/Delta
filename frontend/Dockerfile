@@ -12,7 +12,7 @@ ARG VITE_API_URL=""
 ENV VITE_API_URL=$VITE_API_URL
 ENV NITRO_PRESET=node-server
 
-RUN test -n "$VITE_API_URL" || echo "WARNING: VITE_API_URL is empty — API calls will fall back to localhost"
+RUN test -n "$VITE_API_URL" || (echo "ERROR: Set VITE_API_URL to your backend URL before building." && exit 1)
 RUN npm run build
 
 FROM node:22-alpine

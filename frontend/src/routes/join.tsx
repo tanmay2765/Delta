@@ -11,6 +11,7 @@ import { useLocalMedia } from "@/hooks/useLocalMedia";
 import { api } from "@/lib/api";
 import { displayNameFromUser, getStoredUser } from "@/lib/auth-storage";
 import { getMeetingSession, setMeetingSession } from "@/lib/meeting-session";
+import { setSharedMediaStream } from "@/lib/shared-media";
 import { Link2 } from "lucide-react";
 
 type JoinSearch = {
@@ -77,6 +78,7 @@ function JoinMeeting() {
         isHost: Boolean(data.isHost),
         sessionToken: data.sessionToken,
       });
+      if (stream?.active) setSharedMediaStream(stream);
       navigate({
         to: "/meeting/$meetingId",
         params: { meetingId: data.meetingId },
@@ -114,6 +116,7 @@ function JoinMeeting() {
         isHost: Boolean(result.isHost),
         sessionToken: result.sessionToken,
       });
+      if (stream?.active) setSharedMediaStream(stream);
       navigate({
         to: "/meeting/$meetingId",
         params: { meetingId: waitingMeetingId },

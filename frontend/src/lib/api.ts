@@ -13,7 +13,19 @@ import type {
   ScheduleMeetingInput,
 } from "./types";
 
-export const API_URL = import.meta.env["VITE_API_URL"] ?? "http://localhost:8000";
+export const API_URL = resolveApiUrl();
+
+function resolveApiUrl(): string {
+  const baked = import.meta.env["VITE_API_URL"] ?? "http://localhost:8000";
+  if (typeof window === "undefined") return baked;
+
+  // Render misconfig: frontend live but API still points at localhost.
+  if (baked.includes("localhost") && window.location.hostname.includes("onrender.com")) {
+    const hint = sessionStorage.getItem("delta_api_url");
+    if (hint) return hint;
+  }
+  return baked;
+}
 
 class ApiClientError extends Error {
   status: number;

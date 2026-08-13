@@ -1,18 +1,46 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  consumeSharedMediaStream,
+  peekSharedMediaStream,
+  setSharedMediaStream,
+} from "@/lib/shared-media";
 
 export function useLocalMedia(initialCameraOn = true, initialMicOn = true) {
   const [cameraOn, setCameraOn] = useState(initialCameraOn);
   const [micOn, setMicOn] = useState(initialMicOn);
-  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [stream, setStream] = useState<MediaStream | null>(() => peekSharedMediaStream());
   const [error, setError] = useState<string | null>(null);
   const [isRequesting, setIsRequesting] = useState(false);
   const [sharing, setSharing] = useState(false);
-  const streamRef = useRef<MediaStream | null>(null);
-  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const streamRef = useRef<MediaStream | null>(peekSharedMediaStream());
+  const cameraStreamRef = useRef<MediaStream | null>(peekSharedMediaStream());
+
+  const adoptStream = useCallback((media: MediaStream) => {
+    media.getVideoTracks().forEach((track) => {
+      track.enabled = cameraOn;
+    });
+    media.getAudioTracks().forEach((track) => {
+      track.enabled = micOn;
+    });
+    streamRef.current = media;
+    cameraStreamRef.current = media;
+    setSharedMediaStream(media);
+    setStream(media);
+    return media;
+  }, [cameraOn, micOn]);
+
+  useEffect(() => {
+    const transferred = consumeSharedMediaStream();
+    if (transferred) {
+      adoptStream(transferred);
+    }
+  }, [adoptStream]);
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    cameraStreamRef.current = null;
+    setSharedMediaStream(null);
     setStream(null);
   }, []);
 
@@ -22,25 +50,19 @@ export function useLocalMedia(initialCameraOn = true, initialMicOn = true) {
       return null;
     }
 
+    if (streamRef.current?.active) {
+      return streamRef.current;
+    }
+
     setIsRequesting(true);
     setError(null);
 
     try {
-      stopStream();
       const media = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: true,
       });
-      media.getVideoTracks().forEach((track) => {
-        track.enabled = cameraOn;
-      });
-      media.getAudioTracks().forEach((track) => {
-        track.enabled = micOn;
-      });
-      streamRef.current = media;
-      cameraStreamRef.current = media;
-      setStream(media);
-      return media;
+      return adoptStream(media);
     } catch {
       setError(
         "Could not access camera or microphone. Click Allow in the browser prompt, or check site permissions in your browser settings.",
@@ -49,7 +71,7 @@ export function useLocalMedia(initialCameraOn = true, initialMicOn = true) {
     } finally {
       setIsRequesting(false);
     }
-  }, [cameraOn, micOn, stopStream]);
+  }, [adoptStream]);
 
   useEffect(() => {
     streamRef.current?.getVideoTracks().forEach((track) => {
@@ -73,6 +95,7 @@ export function useLocalMedia(initialCameraOn = true, initialMicOn = true) {
       const audioTracks = streamRef.current?.getAudioTracks() ?? [];
       const combined = new MediaStream([...screen.getVideoTracks(), ...audioTracks]);
       streamRef.current = combined;
+      setSharedMediaStream(combined);
       setStream(combined);
       setSharing(true);
       screen.getVideoTracks()[0]?.addEventListener("ended", () => {
@@ -89,13 +112,12 @@ export function useLocalMedia(initialCameraOn = true, initialMicOn = true) {
     setSharing(false);
     if (cameraStreamRef.current) {
       streamRef.current = cameraStreamRef.current;
+      setSharedMediaStream(cameraStreamRef.current);
       setStream(cameraStreamRef.current);
       return;
     }
     await requestAccess();
   }, [requestAccess, sharing]);
-
-  useEffect(() => () => stopStream(), [stopStream]);
 
   return {
     stream,
@@ -110,6 +132,6 @@ export function useLocalMedia(initialCameraOn = true, initialMicOn = true) {
     startScreenShare,
     stopScreenShare,
     stopStream,
-    hasStream: Boolean(stream),
+    hasStream: Boolean(stream?.active),
   };
 }
