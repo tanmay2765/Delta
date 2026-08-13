@@ -363,10 +363,10 @@ def join_meeting(
         session_token=generate_session_token(),
         is_host=False,
         is_active=True,
-        mic_allowed=False,
-        camera_allowed=False,
-        mic_on=False,
-        camera_on=False,
+        mic_allowed=True,
+        camera_allowed=True,
+        mic_on=mic_on,
+        camera_on=camera_on,
         joined_at=datetime.utcnow(),
     )
     db.add(participant)
@@ -523,10 +523,10 @@ def approve_join_request(
         session_token=generate_session_token(),
         is_host=False,
         is_active=True,
-        mic_allowed=False,
-        camera_allowed=False,
-        mic_on=False,
-        camera_on=False,
+        mic_allowed=True,
+        camera_allowed=True,
+        mic_on=True,
+        camera_on=True,
         joined_at=datetime.utcnow(),
     )
     join_request.status = "approved"

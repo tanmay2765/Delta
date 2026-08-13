@@ -1,12 +1,12 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AppShell } from "@/components/layout/app-shell";
 import { MediaPermissionPrompt } from "@/components/meetings/media-permission-prompt";
 import { MediaPreview } from "@/components/meetings/media-preview";
 import { DeltaInput } from "@/components/ui/delta-input";
 import { DeltaButton } from "@/components/ui/delta-button";
 import { GlassCard } from "@/components/ui/glass-card";
+import { DeltaLogo } from "@/components/ui/delta-logo";
 import { useLocalMedia } from "@/hooks/useLocalMedia";
 import { api } from "@/lib/api";
 import { displayNameFromUser, getStoredUser } from "@/lib/auth-storage";
@@ -161,12 +161,12 @@ function JoinMeeting() {
 
   if (awaitingApproval) {
     return (
-      <AppShell title="Waiting to Join">
-        <div className="mx-auto max-w-lg pt-12 text-center">
+      <div className="ambient-bg flex min-h-dvh flex-col items-center justify-center px-4">
+        <div className="mx-auto max-w-lg text-center">
           <GlassCard className="p-8">
             <h2 className="text-xl font-semibold">Waiting for host to let you in</h2>
             <p className="mt-3 text-muted-foreground">
-              The host has enabled approval for this meeting. You'll join automatically once
+              The host has enabled approval for this meeting. You&apos;ll join automatically once
               admitted.
             </p>
             <div className="mt-6 flex justify-center">
@@ -174,13 +174,20 @@ function JoinMeeting() {
             </div>
           </GlassCard>
         </div>
-      </AppShell>
+      </div>
     );
   }
 
   return (
-    <AppShell title="Join Meeting">
-      <div className="mx-auto max-w-4xl pt-4">
+    <div className="ambient-bg min-h-dvh">
+      <header className="flex items-center justify-between px-6 py-4">
+        <Link to="/" className="inline-flex items-center gap-2">
+          <DeltaLogo />
+        </Link>
+        <p className="text-sm text-muted-foreground">No account needed to join</p>
+      </header>
+      <div className="mx-auto max-w-4xl px-4 pb-12 pt-4">
+        <h1 className="mb-8 text-center text-3xl font-semibold tracking-tight">Join a meeting</h1>
         <div className="grid gap-8 lg:grid-cols-2">
           <GlassCard className="p-6">
             <h2 className="text-xl font-semibold tracking-tight mb-6">Join with ID or Link</h2>
@@ -246,6 +253,6 @@ function JoinMeeting() {
           </div>
         </div>
       </div>
-    </AppShell>
+    </div>
   );
 }

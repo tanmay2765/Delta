@@ -199,7 +199,7 @@ function MeetingRoom() {
 
   const { remoteStreams, handleSignalingMessage } = useWebRTCMesh(
     session?.participantId,
-    canUseMedia && hasStream ? stream : null,
+    hasStream ? stream : null,
     remoteParticipants,
     sendSignaling,
   );
@@ -390,6 +390,12 @@ function MeetingRoom() {
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   };
 
+  useEffect(() => {
+    if (canUseMedia && !hasStream && !preJoinSkipped) {
+      void requestAccess();
+    }
+  }, [canUseMedia, hasStream, preJoinSkipped, requestAccess]);
+
   if (!sessionReady || isLoading || !meeting || !session) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -423,11 +429,12 @@ function MeetingRoom() {
     return remoteStreams.get(participant.id) ?? null;
   };
 
-  const showPreJoin = canUseMedia && !hasStream && !preJoinSkipped;
+  const showPreJoin = canUseMedia && !hasStream && !preJoinSkipped && !isRequesting;
+  const useGallery = galleryView || joinedParticipants.length >= 2;
   const user = getStoredUser();
 
   return (
-    <div className="meeting-room flex min-h-screen flex-col">
+    <div className="meeting-room flex h-dvh flex-col overflow-hidden">
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-white/10 px-4">
         <div className="flex min-w-0 items-center gap-2 text-sm text-white/90">
           <Info className="h-4 w-4 shrink-0 text-white/60" />
@@ -450,12 +457,12 @@ function MeetingRoom() {
         </div>
       </header>
 
-      <main className="relative flex min-h-0 flex-1 flex-col">
-        <div className="relative min-h-0 flex-1 bg-[#1a1a1a] p-2">
+      <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="relative min-h-0 flex-1 overflow-hidden bg-[#1a1a1a] p-2">
           {floatingReaction && <FloatingReaction emoji={floatingReaction} />}
 
-          {galleryView || joinedParticipants.length > 3 ? (
-            <div className="grid h-full min-h-[280px] grid-cols-2 gap-2 lg:grid-cols-3">
+          {useGallery ? (
+            <div className="grid h-full grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {joinedParticipants.map((p) => (
                 <ParticipantTile
                   key={p.id}
@@ -465,7 +472,7 @@ function MeetingRoom() {
               ))}
             </div>
           ) : (
-            <div className="relative h-full min-h-[280px]">
+            <div className="relative h-full min-h-0">
               {activeSpeaker && (
                 <ParticipantTile
                   participant={{ ...activeSpeaker, speaking: true }}

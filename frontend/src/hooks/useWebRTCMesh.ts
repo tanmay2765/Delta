@@ -3,6 +3,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
+  {
+    urls: [
+      "turn:openrelay.metered.ca:80",
+      "turn:openrelay.metered.ca:443",
+      "turn:openrelay.metered.ca:443?transport=tcp",
+    ],
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
 ];
 
 export type SignalingMessage = {
@@ -97,12 +106,25 @@ export function useWebRTCMesh(
         }
       };
 
+      if (!localStream) {
+        ensureRecvTransceivers(pc);
+      }
       attachLocalTracks(pc);
       peersRef.current.set(remoteId, pc);
       return pc;
     },
-    [attachLocalTracks, closePeer, selfParticipantId, sendSignaling, updateRemoteStream],
+    [attachLocalTracks, closePeer, ensureRecvTransceivers, selfParticipantId, sendSignaling, updateRemoteStream],
   );
+
+  const ensureRecvTransceivers = useCallback((pc: RTCPeerConnection) => {
+    const kinds: Array<"audio" | "video"> = ["audio", "video"];
+    for (const kind of kinds) {
+      const hasTransceiver = pc.getTransceivers().some((t) => t.receiver.track?.kind === kind);
+      if (!hasTransceiver) {
+        pc.addTransceiver(kind, { direction: "recvonly" });
+      }
+    }
+  }, []);
 
   const createOffer = useCallback(
     async (remoteId: string) => {

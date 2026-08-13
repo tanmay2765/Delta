@@ -26,13 +26,22 @@ export function ParticipantTile({
     const video = videoRef.current;
     if (!video) return;
     video.srcObject = showLiveVideo ? stream : null;
-  }, [showLiveVideo, stream]);
+    if (showLiveVideo && !participant.isSelf) {
+      void video.play().catch(() => {
+        // Autoplay policies may require a user gesture first.
+      });
+    }
+  }, [showLiveVideo, stream, participant.isSelf]);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    audio.srcObject = playRemoteAudio && !showLiveVideo ? stream : null;
-  }, [playRemoteAudio, showLiveVideo, stream]);
+    const useAudioElement = playRemoteAudio && (!showLiveVideo || !participant.cameraOn);
+    audio.srcObject = useAudioElement ? stream : null;
+    if (useAudioElement) {
+      void audio.play().catch(() => {});
+    }
+  }, [playRemoteAudio, showLiveVideo, stream, participant.cameraOn]);
 
   return (
     <button
@@ -71,7 +80,7 @@ export function ParticipantTile({
         )}
       </span>
 
-      {playRemoteAudio && !showLiveVideo && (
+      {playRemoteAudio && (!showLiveVideo || !participant.cameraOn) && (
         <audio ref={audioRef} autoPlay playsInline className="hidden" />
       )}
 
