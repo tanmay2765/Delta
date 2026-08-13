@@ -21,7 +21,9 @@ export type PeerDiagnostic = {
 const LOG_PREFIX = "[WebRTC]";
 
 export function webrtcLog(remoteId: string, event: string, detail?: unknown) {
-  if (import.meta.env.DEV || import.meta.env["VITE_WEBRTC_DEBUG"] === "true") {
+  const verbose =
+    import.meta.env.DEV || import.meta.env["VITE_WEBRTC_DEBUG"] === "true";
+  if (verbose || event.includes("failed") || event.includes("error")) {
     if (detail !== undefined) {
       console.info(`${LOG_PREFIX} peer=${remoteId} ${event}`, detail);
     } else {

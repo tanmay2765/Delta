@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchIceServers, getFallbackIceServers, hasTurnConfigured } from "@/lib/ice-servers";
+import {
+  fetchIceServers,
+  hasTurnConfigured,
+  isProductionDeploy,
+  type IceServerResponse,
+} from "@/lib/ice-servers";
 import {
   attachPcDiagnostics,
   collectPeerDiagnostics,
@@ -12,6 +17,9 @@ const OFFER_OPTIONS: RTCOfferOptions = {
   offerToReceiveAudio: true,
   offerToReceiveVideo: true,
 };
+
+const MIN_OFFER_GAP_MS = 12_000;
+const MIN_FORCE_OFFER_GAP_MS = 4_000;
 
 export type SignalingMessage = {
   type: string;
@@ -29,6 +37,7 @@ type PeerState = {
   ignoreOffer: boolean;
   seenCandidates: Set<string>;
   detachDiagnostics?: () => void;
+  politeFallbackScheduled?: boolean;
 };
 
 function cloneStreamMap(streams: Map<string, MediaStream>) {
@@ -46,6 +55,13 @@ function isConnected(pc: RTCPeerConnection | undefined) {
     pc?.iceConnectionState === "connected" ||
     pc?.iceConnectionState === "completed"
   );
+}
+
+function sanitizeIceServers(servers: RTCIceServer[]) {
+  return servers.map((server) => ({
+    urls: server.urls,
+    hasCredentials: Boolean(server.username && server.credential),
+  }));
 }
 
 async function limitOutgoingBitrate(pc: RTCPeerConnection, maxKbps = 600) {
@@ -81,12 +97,18 @@ export function useWebRTCMesh(
   const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
   const knownRemoteIdsRef = useRef<string>("");
   const localTracksRef = useRef<string>("");
-  const iceServersRef = useRef<RTCIceServer[]>(getFallbackIceServers());
+  const lastOfferAtRef = useRef<Map<string, number>>(new Map());
+  const iceServersRef = useRef<RTCIceServer[]>([]);
   const relayOnlyRef = useRef<Map<string, boolean>>(new Map());
   const [iceReady, setIceReady] = useState(false);
   const [turnAvailable, setTurnAvailable] = useState(false);
+  const [turnError, setTurnError] = useState<string | null>(null);
+  const [iceConfig, setIceConfig] = useState<IceServerResponse | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(() => new Map());
   const [peerDiagnostics, setPeerDiagnostics] = useState<Map<string, PeerDiagnostic>>(() => new Map());
+
+  const canUseWebRTC =
+    iceReady && (!isProductionDeploy() || turnAvailable || hasTurnConfigured(iceServersRef.current));
 
   const refreshDiagnostics = useCallback(async () => {
     if (!selfParticipantId) return;
@@ -107,28 +129,30 @@ export function useWebRTCMesh(
 
   useEffect(() => {
     let cancelled = false;
-    void fetchIceServers().then((servers) => {
+    void fetchIceServers().then((config) => {
       if (cancelled) return;
-      iceServersRef.current = servers;
-      setTurnAvailable(hasTurnConfigured(servers));
+      iceServersRef.current = config.ice_servers;
+      setIceConfig(config);
+      setTurnAvailable(config.turn_configured);
+      setTurnError(config.turn_error ?? null);
       setIceReady(true);
       webrtcLog("*", "ice-servers-ready", {
-        count: servers.length,
-        turn: hasTurnConfigured(servers),
+        turn: config.turn_configured,
+        sources: config.sources,
+        servers: sanitizeIceServers(config.ice_servers),
+        error: config.turn_error,
       });
+      if (isProductionDeploy() && !config.turn_configured) {
+        console.error(
+          "[WebRTC] TURN not configured on backend — cross-network calls WILL fail. " +
+            (config.turn_error ?? "Set Metered or TURN env vars on Render backend."),
+        );
+      }
     });
     return () => {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (!selfParticipantId || !iceReady) return;
-    const interval = window.setInterval(() => {
-      void refreshDiagnostics();
-    }, 3000);
-    return () => window.clearInterval(interval);
-  }, [iceReady, refreshDiagnostics, selfParticipantId]);
 
   const publishStreams = useCallback(() => {
     setRemoteStreams(cloneStreamMap(remoteStreamsRef.current));
@@ -144,9 +168,19 @@ export function useWebRTCMesh(
     return state;
   }, []);
 
+  const shouldThrottleOffer = useCallback((remoteId: string, force: boolean) => {
+    const last = lastOfferAtRef.current.get(remoteId) ?? 0;
+    const gap = force ? MIN_FORCE_OFFER_GAP_MS : MIN_OFFER_GAP_MS;
+    return Date.now() - last < gap;
+  }, []);
+
+  const markOfferSent = useCallback((remoteId: string) => {
+    lastOfferAtRef.current.set(remoteId, Date.now());
+  }, []);
+
   const addRemoteTrack = useCallback(
     (remoteId: string, track: MediaStreamTrack) => {
-      webrtcLog(remoteId, "ontrack", { kind: track.kind, id: track.id });
+      webrtcLog(remoteId, "ontrack", { kind: track.kind, id: track.id, enabled: track.enabled });
       let stream = remoteStreamsRef.current.get(remoteId);
       if (!stream) {
         stream = new MediaStream();
@@ -169,6 +203,7 @@ export function useWebRTCMesh(
       peerStateRef.current.delete(remoteId);
       pendingIceRef.current.delete(remoteId);
       relayOnlyRef.current.delete(remoteId);
+      lastOfferAtRef.current.delete(remoteId);
       remoteStreamsRef.current.delete(remoteId);
       publishStreams();
       webrtcLog(remoteId, "peer-removed");
@@ -209,17 +244,20 @@ export function useWebRTCMesh(
     }
   }, []);
 
-  const queueIceCandidate = useCallback((remoteId: string, candidate: RTCIceCandidateInit) => {
-    const state = getPeerState(remoteId);
-    const key = candidateKey(candidate);
-    if (state.seenCandidates.has(key)) return;
-    state.seenCandidates.add(key);
+  const queueIceCandidate = useCallback(
+    (remoteId: string, candidate: RTCIceCandidateInit) => {
+      const state = getPeerState(remoteId);
+      const key = candidateKey(candidate);
+      if (state.seenCandidates.has(key)) return;
+      state.seenCandidates.add(key);
 
-    const queue = pendingIceRef.current.get(remoteId) ?? [];
-    queue.push(candidate);
-    pendingIceRef.current.set(remoteId, queue);
-    webrtcLog(remoteId, "remote-ice-queued", key);
-  }, [getPeerState]);
+      const queue = pendingIceRef.current.get(remoteId) ?? [];
+      queue.push(candidate);
+      pendingIceRef.current.set(remoteId, queue);
+      webrtcLog(remoteId, "remote-ice-queued", candidate.candidate ?? key);
+    },
+    [getPeerState],
+  );
 
   const flushIce = useCallback(async (remoteId: string) => {
     const pc = peersRef.current.get(remoteId);
@@ -229,7 +267,7 @@ export function useWebRTCMesh(
     for (const candidate of queued) {
       try {
         await pc.addIceCandidate(new RTCIceCandidate(candidate));
-        webrtcLog(remoteId, "remote-ice-added", candidateKey(candidate));
+        webrtcLog(remoteId, "remote-ice-added", candidate.candidate ?? candidateKey(candidate));
       } catch (error) {
         webrtcError(remoteId, "addIceCandidate failed", error);
       }
@@ -248,11 +286,20 @@ export function useWebRTCMesh(
       let pc = peersRef.current.get(remoteId);
       if (pc) return pc;
 
+      if (!iceServersRef.current.length) {
+        throw new Error("ICE servers not loaded");
+      }
+
       pc = new RTCPeerConnection({
         iceServers: iceServersRef.current,
         iceCandidatePoolSize: 10,
         bundlePolicy: "max-bundle",
         iceTransportPolicy: relayOnlyRef.current.get(remoteId) ? "relay" : "all",
+      });
+
+      webrtcLog(remoteId, "peer-created", {
+        iceServers: sanitizeIceServers(iceServersRef.current),
+        relayOnly: relayOnlyRef.current.get(remoteId) ?? false,
       });
 
       const state = getPeerState(remoteId);
@@ -272,7 +319,11 @@ export function useWebRTCMesh(
 
       pc.onicecandidate = (event) => {
         if (event.candidate) {
-          webrtcLog(remoteId, "local-ice-candidate", event.candidate.type ?? event.candidate.candidate);
+          webrtcLog(remoteId, "local-ice-candidate", {
+            type: event.candidate.type,
+            protocol: event.candidate.protocol,
+            candidate: event.candidate.candidate,
+          });
           sendSignal({
             type: "webrtc_ice",
             to: Number(remoteId),
@@ -284,9 +335,17 @@ export function useWebRTCMesh(
       };
 
       pc.onconnectionstatechange = () => {
+        webrtcLog(remoteId, "connectionstatechange", {
+          connectionState: pc?.connectionState,
+          iceConnectionState: pc?.iceConnectionState,
+          signalingState: pc?.signalingState,
+        });
         void refreshDiagnostics();
         if (pc?.connectionState !== "failed") return;
-        webrtcError(remoteId, "connection-failed", pc.connectionState);
+        webrtcError(remoteId, "connection-failed", {
+          iceConnectionState: pc.iceConnectionState,
+          turnAvailable,
+        });
         if (!relayOnlyRef.current.get(remoteId) && turnAvailable) {
           relayOnlyRef.current.set(remoteId, true);
           removeRemote(remoteId);
@@ -302,7 +361,6 @@ export function useWebRTCMesh(
       }
 
       peersRef.current.set(remoteId, pc);
-      webrtcLog(remoteId, "peer-created", { relayOnly: relayOnlyRef.current.get(remoteId) ?? false });
       return pc;
     },
     [
@@ -330,13 +388,28 @@ export function useWebRTCMesh(
 
   const makeOffer = useCallback(
     async (remoteId: string, force = false) => {
-      if (!selfParticipantId || !signalingReady || !iceReady) return;
+      if (!selfParticipantId || !signalingReady || !canUseWebRTC) return;
 
       const state = getPeerState(remoteId);
       if (state.makingOffer) return;
 
       const existing = peersRef.current.get(remoteId);
-      if (!force && isConnected(existing) && remoteStreamsRef.current.get(remoteId)?.getTracks().length) {
+      if (
+        !force &&
+        isConnected(existing) &&
+        remoteStreamsRef.current.get(remoteId)?.getTracks().length &&
+        existing?.getSenders().some((s) => s.track?.readyState === "live")
+      ) {
+        return;
+      }
+
+      if (shouldThrottleOffer(remoteId, force)) {
+        webrtcLog(remoteId, "offer-throttled");
+        return;
+      }
+
+      if (existing && existing.signalingState !== "stable" && !force) {
+        webrtcLog(remoteId, "skip-offer-unstable", existing.signalingState);
         return;
       }
 
@@ -348,16 +421,15 @@ export function useWebRTCMesh(
           ensureRecvOnly(pc);
         }
 
-        if (pc.signalingState !== "stable" && !force) {
-          webrtcLog(remoteId, "skip-offer-unstable", pc.signalingState);
-          return;
-        }
-
-        const offer = await pc.createOffer(OFFER_OPTIONS);
+        const offer = await pc.createOffer({
+          ...OFFER_OPTIONS,
+          iceRestart: force && relayOnlyRef.current.get(remoteId) === true,
+        });
         await pc.setLocalDescription(offer);
         await limitOutgoingBitrate(pc);
         sendSignal({ type: "webrtc_offer", to: Number(remoteId), sdp: offer });
-        webrtcLog(remoteId, "local-offer-sent");
+        markOfferSent(remoteId);
+        webrtcLog(remoteId, "local-offer-sent", { force, type: offer.type });
       } catch (error) {
         webrtcError(remoteId, "makeOffer failed", error);
       } finally {
@@ -366,13 +438,15 @@ export function useWebRTCMesh(
     },
     [
       attachLocalTracks,
+      canUseWebRTC,
       ensureRecvOnly,
       getOrCreatePc,
       getPeerState,
-      iceReady,
       localStream,
+      markOfferSent,
       selfParticipantId,
       sendSignal,
+      shouldThrottleOffer,
       signalingReady,
     ],
   );
@@ -381,7 +455,7 @@ export function useWebRTCMesh(
 
   const handleOffer = useCallback(
     async (remoteId: string, sdp: RTCSessionDescriptionInit) => {
-      if (!selfParticipantId || !signalingReady || !iceReady) return;
+      if (!selfParticipantId || !signalingReady || !canUseWebRTC) return;
 
       const polite = isPolite(remoteId);
       const state = getPeerState(remoteId);
@@ -406,6 +480,7 @@ export function useWebRTCMesh(
           webrtcLog(remoteId, "rollback-local-offer");
         }
 
+        webrtcLog(remoteId, "remote-offer-received", { type: sdp.type });
         await pc.setRemoteDescription(new RTCSessionDescription(sdp));
         const answer = await pc.createAnswer(OFFER_OPTIONS);
         await pc.setLocalDescription(answer);
@@ -420,11 +495,11 @@ export function useWebRTCMesh(
     },
     [
       attachLocalTracks,
+      canUseWebRTC,
       ensureRecvOnly,
       flushIce,
       getOrCreatePc,
       getPeerState,
-      iceReady,
       isPolite,
       localStream,
       removeRemote,
@@ -447,8 +522,8 @@ export function useWebRTCMesh(
       }
 
       try {
+        webrtcLog(remoteId, "remote-answer-received", { type: sdp.type });
         await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-        webrtcLog(remoteId, "remote-answer-applied");
         await flushIce(remoteId);
       } catch (error) {
         webrtcError(remoteId, "handleAnswer failed", error);
@@ -475,7 +550,7 @@ export function useWebRTCMesh(
 
       try {
         await pc.addIceCandidate(new RTCIceCandidate(candidate));
-        webrtcLog(remoteId, "remote-ice-added", key);
+        webrtcLog(remoteId, "remote-ice-added", candidate.candidate ?? key);
       } catch (error) {
         webrtcError(remoteId, "addIceCandidate failed", error);
       }
@@ -485,19 +560,26 @@ export function useWebRTCMesh(
 
   const initiateConnection = useCallback(
     (remoteId: string, force = false) => {
+      if (!canUseWebRTC) return;
+
       if (force || !isPolite(remoteId)) {
         void makeOffer(remoteId, force);
         return;
       }
+
+      const state = getPeerState(remoteId);
+      if (state.politeFallbackScheduled) return;
+      state.politeFallbackScheduled = true;
+
       window.setTimeout(() => {
         const pc = peersRef.current.get(remoteId);
         const hasRemoteMedia = Boolean(remoteStreamsRef.current.get(remoteId)?.getTracks().length);
         if (!isConnected(pc) || !hasRemoteMedia) {
           void makeOffer(remoteId, true);
         }
-      }, 2000);
+      }, 2500);
     },
-    [isPolite, makeOffer],
+    [canUseWebRTC, getPeerState, isPolite, makeOffer],
   );
 
   const handleSignalingMessage = useCallback(
@@ -531,14 +613,16 @@ export function useWebRTCMesh(
   );
 
   const syncAll = useCallback(() => {
-    if (!selfParticipantId || !signalingReady || !iceReady) return;
+    if (!selfParticipantId || !signalingReady || !canUseWebRTC) return;
 
     const remoteIds = remoteParticipants
       .map((participant) => participant.id)
       .filter((id) => id !== String(selfParticipantId));
 
     for (const remoteId of remoteIds) {
-      initiateConnection(remoteId);
+      if (!peersRef.current.has(remoteId)) {
+        initiateConnection(remoteId);
+      }
     }
 
     for (const remoteId of peersRef.current.keys()) {
@@ -546,10 +630,17 @@ export function useWebRTCMesh(
         removeRemote(remoteId);
       }
     }
-  }, [initiateConnection, iceReady, remoteParticipants, removeRemote, selfParticipantId, signalingReady]);
+  }, [
+    canUseWebRTC,
+    initiateConnection,
+    remoteParticipants,
+    removeRemote,
+    selfParticipantId,
+    signalingReady,
+  ]);
 
   useEffect(() => {
-    if (!selfParticipantId || !signalingReady || !iceReady) return;
+    if (!selfParticipantId || !signalingReady || !canUseWebRTC) return;
     const remoteKey = remoteParticipants
       .map((participant) => participant.id)
       .filter((id) => id !== String(selfParticipantId))
@@ -558,10 +649,11 @@ export function useWebRTCMesh(
     if (remoteKey === knownRemoteIdsRef.current) return;
     knownRemoteIdsRef.current = remoteKey;
     syncAll();
-  }, [remoteParticipants, selfParticipantId, signalingReady, iceReady, syncAll]);
+  }, [canUseWebRTC, remoteParticipants, selfParticipantId, signalingReady, syncAll]);
 
+  // Renegotiate once when local tracks first become available (host camera after join).
   useEffect(() => {
-    if (!selfParticipantId || !signalingReady || !iceReady) return;
+    if (!selfParticipantId || !signalingReady || !canUseWebRTC) return;
 
     const trackSignature = localStream?.active
       ? localStream
@@ -571,20 +663,26 @@ export function useWebRTCMesh(
       : "none";
 
     if (trackSignature === localTracksRef.current) return;
+    const hadTracks = localTracksRef.current !== "none";
     localTracksRef.current = trackSignature;
 
     sendSignal({ type: "webrtc_ready" });
 
+    if (trackSignature === "none") return;
+
     for (const { id: remoteId } of remoteParticipants) {
       if (remoteId === String(selfParticipantId)) continue;
-      if (peersRef.current.get(remoteId)) {
-        attachLocalTracks(peersRef.current.get(remoteId)!);
+      const pc = peersRef.current.get(remoteId);
+      if (pc) attachLocalTracks(pc);
+
+      const sending = pc?.getSenders().some((s) => s.track?.readyState === "live");
+      if (!hadTracks || !sending) {
+        void makeOffer(remoteId, true);
       }
-      void makeOffer(remoteId, true);
     }
   }, [
     attachLocalTracks,
-    iceReady,
+    canUseWebRTC,
     localStream,
     makeOffer,
     remoteParticipants,
@@ -593,38 +691,28 @@ export function useWebRTCMesh(
     signalingReady,
   ]);
 
+  // Retry only on hard failures — no offer spam.
   useEffect(() => {
-    if (!selfParticipantId || !signalingReady || !iceReady) return;
+    if (!selfParticipantId || !signalingReady || !canUseWebRTC) return;
 
     const interval = window.setInterval(() => {
       for (const { id: remoteId } of remoteParticipants) {
         if (remoteId === String(selfParticipantId)) continue;
         const pc = peersRef.current.get(remoteId);
-        const remoteTracks = remoteStreamsRef.current.get(remoteId)?.getTracks().length ?? 0;
-        const sending = pc?.getSenders().some(
-          (sender) => sender.track && sender.track.readyState === "live",
-        );
 
-        if (!pc || pc.connectionState === "failed" || pc.connectionState === "disconnected") {
-          initiateConnection(remoteId, true);
-        } else if (localStream?.active && !sending) {
-          void makeOffer(remoteId, true);
-        } else if (isConnected(pc) && remoteTracks === 0) {
+        if (
+          !pc ||
+          pc.connectionState === "failed" ||
+          pc.iceConnectionState === "failed" ||
+          pc.connectionState === "disconnected"
+        ) {
           initiateConnection(remoteId, true);
         }
       }
-    }, 4000);
+    }, 8000);
 
     return () => window.clearInterval(interval);
-  }, [
-    initiateConnection,
-    iceReady,
-    localStream,
-    makeOffer,
-    remoteParticipants,
-    selfParticipantId,
-    signalingReady,
-  ]);
+  }, [canUseWebRTC, initiateConnection, remoteParticipants, selfParticipantId, signalingReady]);
 
   useEffect(() => {
     return () => {
@@ -640,6 +728,9 @@ export function useWebRTCMesh(
     syncPeers: syncAll,
     peerDiagnostics,
     turnAvailable,
+    turnError,
     iceReady,
+    canUseWebRTC,
+    iceConfig,
   };
 }

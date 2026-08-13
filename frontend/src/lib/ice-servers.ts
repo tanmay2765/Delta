@@ -2,7 +2,13 @@ import { API_URL } from "./api";
 
 export type IceServerConfig = RTCIceServer;
 
-/** STUN-only fallback — TURN must come from backend env or build-time VITE_* vars. */
+export type IceServerResponse = {
+  ice_servers: IceServerConfig[];
+  turn_configured: boolean;
+  sources: string[];
+  turn_error?: string | null;
+};
+
 function stunOnlyFallback(): IceServerConfig[] {
   const stunUrl = import.meta.env["VITE_STUN_URL"] as string | undefined;
   if (stunUrl) {
@@ -14,7 +20,6 @@ function stunOnlyFallback(): IceServerConfig[] {
   ];
 }
 
-/** Optional build-time TURN (Render/Vite injects at build — no secrets in source). */
 function envTurnServers(): IceServerConfig[] {
   const turnUrl = import.meta.env["VITE_TURN_URL"] as string | undefined;
   const username = import.meta.env["VITE_TURN_USERNAME"] as string | undefined;
@@ -28,27 +33,67 @@ function envTurnServers(): IceServerConfig[] {
   return [{ urls, username, credential }];
 }
 
-let cachedServers: IceServerConfig[] | null = null;
+let cached: IceServerResponse | null = null;
 let cacheExpiry = 0;
 
-function normalizeIceServers(payload: unknown): IceServerConfig[] {
-  if (!Array.isArray(payload)) {
-    return [...stunOnlyFallback(), ...envTurnServers()];
+function parseResponse(payload: unknown): IceServerResponse {
+  if (payload && typeof payload === "object" && "ice_servers" in payload) {
+    const body = payload as IceServerResponse;
+    const ice_servers = Array.isArray(body.ice_servers) ? body.ice_servers : [];
+    const withEnv = [...ice_servers, ...envTurnServers()];
+    return {
+      ice_servers: withEnv.length ? withEnv : stunOnlyFallback(),
+      turn_configured: Boolean(body.turn_configured) || hasTurnConfigured(withEnv),
+      sources: body.sources ?? [],
+      turn_error: body.turn_error ?? null,
+    };
   }
-  const servers = payload.filter(
-    (entry): entry is IceServerConfig =>
-      Boolean(entry) && typeof entry === "object" && "urls" in entry,
-  );
-  if (!servers.length) {
-    return [...stunOnlyFallback(), ...envTurnServers()];
+
+  if (Array.isArray(payload)) {
+    const ice_servers = [...payload, ...envTurnServers()];
+    return {
+      ice_servers,
+      turn_configured: hasTurnConfigured(ice_servers),
+      sources: ["legacy-array"],
+      turn_error: hasTurnConfigured(ice_servers)
+        ? null
+        : "Backend returned legacy STUN-only array — configure TURN on backend",
+    };
   }
-  return servers;
+
+  const fallback = [...stunOnlyFallback(), ...envTurnServers()];
+  return {
+    ice_servers: fallback,
+    turn_configured: hasTurnConfigured(fallback),
+    sources: ["fallback"],
+    turn_error: "Could not parse ICE server response",
+  };
 }
 
-export async function fetchIceServers(): Promise<IceServerConfig[]> {
+export function hasTurnConfigured(servers: IceServerConfig[]): boolean {
+  return servers.some((server) => {
+    const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+    return (
+      urls.some((url) => String(url).startsWith("turn")) &&
+      Boolean(server.username) &&
+      Boolean(server.credential)
+    );
+  });
+}
+
+export function isProductionDeploy(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    window.location.protocol === "https:" &&
+    (window.location.hostname.includes("onrender.com") ||
+      window.location.hostname.endsWith(".vercel.app"))
+  );
+}
+
+export async function fetchIceServers(): Promise<IceServerResponse> {
   const now = Date.now();
-  if (cachedServers && now < cacheExpiry) {
-    return cachedServers;
+  if (cached && now < cacheExpiry) {
+    return cached;
   }
 
   try {
@@ -56,16 +101,17 @@ export async function fetchIceServers(): Promise<IceServerConfig[]> {
       headers: { Accept: "application/json" },
     });
     if (!response.ok) {
-      throw new Error("Failed to load ICE servers");
+      throw new Error(`HTTP ${response.status}`);
     }
-    const servers = normalizeIceServers(await response.json());
-    cachedServers = servers;
+    const parsed = parseResponse(await response.json());
+    cached = parsed;
     cacheExpiry = now + 55 * 60 * 1000;
-    return servers;
-  } catch {
-    const fallback = [...stunOnlyFallback(), ...envTurnServers()];
-    cachedServers = fallback;
-    cacheExpiry = now + 5 * 60 * 1000;
+    return parsed;
+  } catch (error) {
+    const fallback = parseResponse(null);
+    fallback.turn_error = `Failed to fetch ICE servers: ${error instanceof Error ? error.message : "unknown"}`;
+    cached = fallback;
+    cacheExpiry = now + 60 * 1000;
     return fallback;
   }
 }
@@ -74,11 +120,20 @@ export function getFallbackIceServers(): IceServerConfig[] {
   return [...stunOnlyFallback(), ...envTurnServers()];
 }
 
-export function hasTurnConfigured(servers: IceServerConfig[]): boolean {
-  return servers.some(
-    (server) =>
-      (Array.isArray(server.urls)
-        ? server.urls.some((url) => url.startsWith("turn"))
-        : String(server.urls).startsWith("turn")) && server.username && server.credential,
-  );
+export async function fetchTurnStatus(): Promise<{
+  turn_configured: boolean;
+  turn_error?: string | null;
+  sources?: string[];
+}> {
+  try {
+    const response = await fetch(`${API_URL}/api/turn/status`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return (await response.json()) as {
+      turn_configured: boolean;
+      turn_error?: string | null;
+      sources?: string[];
+    };
+  } catch {
+    return { turn_configured: false, turn_error: "Could not reach /api/turn/status" };
+  }
 }

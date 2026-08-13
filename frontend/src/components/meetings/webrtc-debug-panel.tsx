@@ -6,6 +6,9 @@ export function WebRtcDebugPanel({
   onClose,
   diagnostics,
   turnAvailable,
+  turnError,
+  iceSources,
+  canUseWebRTC,
   iceReady,
   signalingReady,
 }: {
@@ -13,6 +16,9 @@ export function WebRtcDebugPanel({
   onClose: () => void;
   diagnostics: Map<string, PeerDiagnostic>;
   turnAvailable: boolean;
+  turnError?: string | null;
+  iceSources?: string[];
+  canUseWebRTC?: boolean;
   iceReady: boolean;
   signalingReady: boolean;
 }) {
@@ -29,10 +35,15 @@ export function WebRtcDebugPanel({
         </button>
       </div>
 
-      <div className="mb-3 grid grid-cols-2 gap-1 text-[11px] text-white/70">
+      <div className="mb-3 grid grid-cols-1 gap-1 text-[11px] text-white/70">
         <span>Signaling WS: {signalingReady ? "open" : "closed"}</span>
         <span>ICE config: {iceReady ? "loaded" : "loading"}</span>
-        <span>TURN configured: {turnAvailable ? "yes" : "NO — cross-network may fail"}</span>
+        <span>WebRTC allowed: {canUseWebRTC ? "yes" : "blocked (no TURN)"}</span>
+        <span className={turnAvailable ? "text-green-400" : "text-red-400"}>
+          TURN configured: {turnAvailable ? "yes" : "NO"}
+        </span>
+        {iceSources?.length ? <span>Sources: {iceSources.join(", ")}</span> : null}
+        {turnError ? <span className="text-red-300">{turnError}</span> : null}
       </div>
 
       {rows.length === 0 ? (

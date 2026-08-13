@@ -215,7 +215,10 @@ function MeetingRoom() {
     syncPeers,
     peerDiagnostics,
     turnAvailable,
+    turnError,
     iceReady,
+    canUseWebRTC,
+    iceConfig,
   } = useWebRTCMesh(
     meetingId,
     session?.participantId,
@@ -569,11 +572,21 @@ function MeetingRoom() {
             </p>
           )}
 
+          {!canUseWebRTC && iceReady && (
+            <p className="absolute inset-x-4 top-4 z-20 rounded-lg border border-red-500/50 bg-red-950/90 px-4 py-3 text-center text-sm text-red-100">
+              TURN is not configured on the backend. Cross-network video will fail (ICE → failed).
+              {turnError ? ` ${turnError}` : ""} Set Metered env vars on Render and redeploy backend.
+            </p>
+          )}
+
           <WebRtcDebugPanel
             open={debugOpen}
             onClose={() => setDebugOpen(false)}
             diagnostics={peerDiagnostics}
             turnAvailable={turnAvailable}
+            turnError={turnError}
+            iceSources={iceConfig?.sources}
+            canUseWebRTC={canUseWebRTC}
             iceReady={iceReady}
             signalingReady={signalingReady}
           />
