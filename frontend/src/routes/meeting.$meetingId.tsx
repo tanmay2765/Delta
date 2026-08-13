@@ -165,6 +165,7 @@ function MeetingRoom() {
   }, [meetingId, navigate, stopStream]);
 
   const signalingHandlerRef = useRef<(message: SignalingMessage) => void>(() => {});
+  const syncPeersRef = useRef<() => void>(() => {});
 
   const handleChatMessage = useCallback(
     (payload: { from: number; sender_name: string; text: string; sent_at: string }) => {
@@ -183,7 +184,7 @@ function MeetingRoom() {
     [chatOpen, session?.participantId],
   );
 
-  const { sendSignaling, sendChatMessage, sendReaction } = useMeetingRealtime(
+  const { sendSignaling, sendChatMessage, sendReaction, signalingReady } = useMeetingRealtime(
     meetingId,
     session,
     handleMeetingUpdate,
@@ -195,6 +196,7 @@ function MeetingRoom() {
       window.setTimeout(() => setFloatingReaction(null), 2500);
     },
     handleRemoved,
+    () => syncPeersRef.current(),
   );
 
   const remoteParticipants = useMemo(
@@ -205,16 +207,23 @@ function MeetingRoom() {
     [meeting?.participants, session?.participantId],
   );
 
-  const { remoteStreams, handleSignalingMessage } = useWebRTCMesh(
+  const { remoteStreams, handleSignalingMessage, syncPeers } = useWebRTCMesh(
     session?.participantId,
     stream,
     remoteParticipants,
     sendSignaling,
+    signalingReady,
   );
 
   signalingHandlerRef.current = (message) => {
     void handleSignalingMessage(message);
   };
+  syncPeersRef.current = syncPeers;
+
+  useEffect(() => {
+    if (!sessionReady || !canUseMedia || hasStream || isRequesting) return;
+    void requestAccess();
+  }, [sessionReady, canUseMedia, hasStream, isRequesting, requestAccess]);
 
   const { data: joinRequests = [] } = useQuery({
     queryKey: ["join-requests", meetingId],

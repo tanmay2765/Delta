@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { API_URL } from "@/lib/api";
 import type { MeetingSession } from "@/lib/meeting-session";
@@ -31,13 +31,17 @@ export function useMeetingRealtime(
   onChatMessage?: (message: ChatPayload) => void,
   onReaction?: (payload: { from: number; emoji: string }) => void,
   onRemoved?: () => void,
+  onSocketReady?: () => void,
 ) {
   const queryClient = useQueryClient();
   const socketRef = useRef<WebSocket | null>(null);
+  const pendingOutboundRef = useRef<string[]>([]);
   const onSignalingRef = useRef(onSignalingMessage);
   const onChatRef = useRef(onChatMessage);
   const onReactionRef = useRef(onReaction);
   const onRemovedRef = useRef(onRemoved);
+  const onSocketReadyRef = useRef(onSocketReady);
+  const [signalingReady, setSignalingReady] = useState(false);
 
   useEffect(() => {
     onSignalingRef.current = onSignalingMessage;
@@ -55,10 +59,26 @@ export function useMeetingRealtime(
     onRemovedRef.current = onRemoved;
   }, [onRemoved]);
 
-  const sendSocketMessage = useCallback((message: Record<string, unknown>) => {
+  useEffect(() => {
+    onSocketReadyRef.current = onSocketReady;
+  }, [onSocketReady]);
+
+  const flushPending = useCallback(() => {
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
-    socket.send(JSON.stringify(message));
+    while (pendingOutboundRef.current.length > 0) {
+      socket.send(pendingOutboundRef.current.shift()!);
+    }
+  }, []);
+
+  const sendSocketMessage = useCallback((message: Record<string, unknown>) => {
+    const payload = JSON.stringify(message);
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      pendingOutboundRef.current.push(payload);
+      return;
+    }
+    socket.send(payload);
   }, []);
 
   const sendSignaling = useCallback(
@@ -83,7 +103,13 @@ export function useMeetingRealtime(
   );
 
   useEffect(() => {
-    if (!session?.participantId || !session.sessionToken) return;
+    if (!session?.participantId || !session.sessionToken) {
+      setSignalingReady(false);
+      return;
+    }
+
+    pendingOutboundRef.current = [];
+    setSignalingReady(false);
 
     const url =
       `${wsBaseUrl()}/api/meetings/${encodeURIComponent(meetingId)}/ws` +
@@ -92,6 +118,21 @@ export function useMeetingRealtime(
 
     const socket = new WebSocket(url);
     socketRef.current = socket;
+
+    socket.onopen = () => {
+      flushPending();
+      setSignalingReady(true);
+      onSocketReadyRef.current?.();
+    };
+
+    socket.onerror = () => {
+      setSignalingReady(false);
+    };
+
+    socket.onclose = () => {
+      setSignalingReady(false);
+      pendingOutboundRef.current = [];
+    };
 
     socket.onmessage = (event) => {
       try {
@@ -128,8 +169,18 @@ export function useMeetingRealtime(
     return () => {
       socket.close();
       socketRef.current = null;
+      pendingOutboundRef.current = [];
+      setSignalingReady(false);
     };
-  }, [meetingId, session?.participantId, session?.sessionToken, onMeetingUpdate, onMeetingEnded, queryClient]);
+  }, [
+    meetingId,
+    session?.participantId,
+    session?.sessionToken,
+    onMeetingUpdate,
+    onMeetingEnded,
+    queryClient,
+    flushPending,
+  ]);
 
-  return { sendSignaling, sendChatMessage, sendReaction };
+  return { sendSignaling, sendChatMessage, sendReaction, signalingReady };
 }
