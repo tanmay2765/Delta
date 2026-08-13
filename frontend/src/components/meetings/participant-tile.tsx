@@ -4,6 +4,12 @@ import { DeltaAvatar } from "@/components/ui/delta-avatar";
 import { cn } from "@/lib/utils";
 import type { Participant } from "@/lib/types";
 
+function hasLiveTrack(stream: MediaStream | null | undefined, kind: "audio" | "video") {
+  return Boolean(
+    stream?.getTracks().some((track) => track.kind === kind && track.readyState === "live"),
+  );
+}
+
 export function ParticipantTile({
   participant,
   large,
@@ -19,34 +25,51 @@ export function ParticipantTile({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const showLiveVideo = participant.cameraOn && stream;
-  const playRemoteAudio = !participant.isSelf && participant.micOn && stream;
+
+  const hasRemoteVideo = !participant.isSelf && hasLiveTrack(stream, "video");
+  const hasRemoteAudio = !participant.isSelf && hasLiveTrack(stream, "audio");
+  const showLiveVideo = participant.isSelf
+    ? participant.cameraOn && Boolean(stream)
+    : hasRemoteVideo || (participant.cameraOn && Boolean(stream));
+
+  const playRemoteAudio =
+    !participant.isSelf && participant.micOn && (hasRemoteAudio || Boolean(stream));
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    video.srcObject = showLiveVideo ? stream : null;
+    video.srcObject = showLiveVideo ? stream ?? null : null;
     if (showLiveVideo && !participant.isSelf) {
-      void video.play().catch(() => {
-        // Autoplay policies may require a user gesture first.
-      });
+      video.muted = false;
+      void video.play().catch(() => {});
     }
   }, [showLiveVideo, stream, participant.isSelf]);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const useAudioElement = playRemoteAudio && (!showLiveVideo || !participant.cameraOn);
-    audio.srcObject = useAudioElement ? stream : null;
+    const useAudioElement = playRemoteAudio && !showLiveVideo;
+    audio.srcObject = useAudioElement ? stream ?? null : null;
     if (useAudioElement) {
       void audio.play().catch(() => {});
     }
-  }, [playRemoteAudio, showLiveVideo, stream, participant.cameraOn]);
+  }, [playRemoteAudio, showLiveVideo, stream]);
+
+  const resumePlayback = () => {
+    if (participant.isSelf) return;
+    const video = videoRef.current;
+    const audio = audioRef.current;
+    if (video?.srcObject) void video.play().catch(() => {});
+    if (audio?.srcObject) void audio.play().catch(() => {});
+  };
 
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => {
+        resumePlayback();
+        onClick?.();
+      }}
       aria-label={`Focus ${participant.name}`}
       className={cn(
         "group relative overflow-hidden rounded-2xl border bg-linear-to-br from-secondary to-rail text-left transition-all",
@@ -66,7 +89,7 @@ export function ParticipantTile({
             muted={participant.isSelf}
             className={cn("h-full w-full object-cover", participant.isSelf && "mirror")}
           />
-        ) : participant.cameraOn ? (
+        ) : participant.cameraOn && !hasRemoteVideo ? (
           <DeltaAvatar name={participant.name} size={large ? "xl" : "lg"} />
         ) : (
           <span className="flex flex-col items-center gap-2 text-muted-foreground">
@@ -80,7 +103,7 @@ export function ParticipantTile({
         )}
       </span>
 
-      {playRemoteAudio && (!showLiveVideo || !participant.cameraOn) && (
+      {playRemoteAudio && !showLiveVideo && (
         <audio ref={audioRef} autoPlay playsInline className="hidden" />
       )}
 

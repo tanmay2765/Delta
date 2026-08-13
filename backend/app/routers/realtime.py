@@ -168,6 +168,14 @@ async def meeting_websocket(
                 )
                 continue
 
+            if message_type == "webrtc_ready":
+                await meeting_hub.broadcast(
+                    meeting_id,
+                    {"type": "webrtc_ready", "from": participant_id},
+                    exclude_participant_id=participant_id,
+                )
+                continue
+
             if message_type not in WEBRTC_SIGNAL_TYPES:
                 continue
 

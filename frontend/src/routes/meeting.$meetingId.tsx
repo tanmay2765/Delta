@@ -207,16 +207,14 @@ function MeetingRoom() {
 
   const { remoteStreams, handleSignalingMessage } = useWebRTCMesh(
     session?.participantId,
-    hasStream ? stream : null,
+    stream,
     remoteParticipants,
     sendSignaling,
   );
 
-  useEffect(() => {
-    signalingHandlerRef.current = (message) => {
-      void handleSignalingMessage(message);
-    };
-  }, [handleSignalingMessage]);
+  signalingHandlerRef.current = (message) => {
+    void handleSignalingMessage(message);
+  };
 
   const { data: joinRequests = [] } = useQuery({
     queryKey: ["join-requests", meetingId],
