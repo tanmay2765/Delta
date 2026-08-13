@@ -71,6 +71,10 @@ class StartMeetingRequest(BaseModel):
     session_token: str
 
 
+class HostSessionRequest(BaseModel):
+    session_token: str
+
+
 class MeetingInviteCreate(BaseModel):
     email: EmailStr
 

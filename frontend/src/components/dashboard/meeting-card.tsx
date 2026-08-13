@@ -34,12 +34,12 @@ export function MeetingCard({ meeting }: { meeting: Meeting }) {
 
       <div className="flex items-center gap-2">
         <DeltaButton size="sm" asChild>
-          <Link to="/meeting/$meetingId" params={{ meetingId: meeting.id }}>
+          <Link to="/join" search={{ id: meeting.id }}>
             Rejoin
           </Link>
         </DeltaButton>
         <DeltaButton size="sm" variant="outline" asChild>
-          <Link to="/meeting/$meetingId" params={{ meetingId: meeting.id }}>
+          <Link to="/join" search={{ id: meeting.id }}>
             Details
           </Link>
         </DeltaButton>

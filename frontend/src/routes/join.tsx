@@ -9,7 +9,7 @@ import { DeltaButton } from "@/components/ui/delta-button";
 import { GlassCard } from "@/components/ui/glass-card";
 import { useLocalMedia } from "@/hooks/useLocalMedia";
 import { api } from "@/lib/api";
-import { displayNameFromUser, getStoredUser, getToken } from "@/lib/auth-storage";
+import { displayNameFromUser, getStoredUser } from "@/lib/auth-storage";
 import { getMeetingSession, setMeetingSession } from "@/lib/meeting-session";
 import { Link2 } from "lucide-react";
 
@@ -31,22 +31,17 @@ function JoinMeeting() {
   const { code, id: presetId } = Route.useSearch();
   const user = getStoredUser();
   const [meetingId, setMeetingId] = useState(presetId ?? "");
-  const [name, setName] = useState(displayNameFromUser(user, ""));
+  const [name, setName] = useState(displayNameFromUser(user, "Guest"));
   const [error, setError] = useState("");
   const [awaitingApproval, setAwaitingApproval] = useState(false);
   const [resolvedMeetingId, setResolvedMeetingId] = useState<string | null>(null);
   const { stream, cameraOn, micOn, setCameraOn, setMicOn, requestAccess, hasStream, isRequesting, error: mediaError } = useLocalMedia(true, true);
 
   useEffect(() => {
-    if (!getToken()) {
-      const redirectPath = code
-        ? `/join?code=${encodeURIComponent(code)}`
-        : presetId
-          ? `/join?id=${encodeURIComponent(presetId)}`
-          : "/join";
-      navigate({ to: "/login", search: { redirect: redirectPath } });
+    if (user && !name) {
+      setName(displayNameFromUser(user, "Guest"));
     }
-  }, [code, presetId, navigate]);
+  }, [user, name]);
 
   const inviteQuery = useQuery({
     queryKey: ["invite", code],

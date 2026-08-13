@@ -1,4 +1,4 @@
-import { Mic, MicOff, Search, UserPlus, Video, VideoOff, X } from "lucide-react";
+import { Mic, MicOff, Search, UserMinus, Video, VideoOff, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { DeltaAvatar } from "@/components/ui/delta-avatar";
 import { DeltaButton } from "@/components/ui/delta-button";
@@ -18,6 +18,8 @@ export function ParticipantsPanel({
   onDenyRequest,
   onToggleMicPermission,
   onToggleCameraPermission,
+  onMuteAll,
+  onRemoveParticipant,
 }: {
   participants: Participant[];
   onClose: () => void;
@@ -30,6 +32,8 @@ export function ParticipantsPanel({
   onDenyRequest?: (requestId: number) => void;
   onToggleMicPermission?: (participantId: string, allowed: boolean) => void;
   onToggleCameraPermission?: (participantId: string, allowed: boolean) => void;
+  onMuteAll?: () => void;
+  onRemoveParticipant?: (participantId: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -41,9 +45,9 @@ export function ParticipantsPanel({
 
   return (
     <>
-      <aside className="glass-panel flex h-full w-full flex-col rounded-2xl bg-card/70 p-4 lg:w-[320px]">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold tracking-tight">
+      <aside className="flex h-full w-full flex-col bg-[#2d2d2d] text-white">
+        <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
+          <h2 className="text-base font-semibold">
             Participants ({participants.length})
           </h2>
           <button
@@ -56,14 +60,14 @@ export function ParticipantsPanel({
           </button>
         </div>
 
-        <div className="relative mt-3">
+        <div className="relative mx-4 mt-3">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search participants"
             aria-label="Search participants"
-            className="glass-soft h-10 w-full rounded-xl pl-9 pr-3 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/30"
+            className="h-10 w-full rounded-lg border border-white/10 bg-[#1a1a1a] pl-9 pr-3 text-sm text-white placeholder:text-white/40 focus:outline-hidden focus:ring-2 focus:ring-[#0e72ed]/40"
           />
         </div>
 
@@ -110,17 +114,10 @@ export function ParticipantsPanel({
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">
                   {p.name}
-                  {p.isSelf && <span className="text-muted-foreground"> (You)</span>}
+                  {p.isSelf && p.isHost && <span className="text-white/50"> (Host, me)</span>}
+                  {p.isSelf && !p.isHost && <span className="text-white/50"> (me)</span>}
+                  {p.isHost && !p.isSelf && <span className="text-white/50"> (Host)</span>}
                 </p>
-                {p.isHost ? (
-                  <p className="text-xs text-muted-foreground">Host</p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    {p.micAllowed ? "Mic allowed" : "Mic blocked"}
-                    {" · "}
-                    {p.cameraAllowed ? "Camera allowed" : "Camera blocked"}
-                  </p>
-                )}
               </div>
               <div className="flex items-center gap-1">
                 {isHost && !p.isSelf && !p.isHost ? (
@@ -139,6 +136,14 @@ export function ParticipantsPanel({
                       onIcon={<Video className="h-4 w-4" />}
                       offIcon={<VideoOff className="h-4 w-4" />}
                     />
+                    <button
+                      type="button"
+                      onClick={() => onRemoveParticipant?.(p.id)}
+                      aria-label={`Remove ${p.name}`}
+                      className="grid h-8 w-8 place-items-center rounded-lg text-red-400 transition-colors hover:bg-white/10"
+                    >
+                      <UserMinus className="h-4 w-4" />
+                    </button>
                   </>
                 ) : (
                   <>
@@ -159,10 +164,29 @@ export function ParticipantsPanel({
           ))}
         </ul>
 
-        <DeltaButton block className="mt-3" onClick={() => setInviteOpen(true)}>
-          <UserPlus className="h-4 w-4" />
-          Invite People
-        </DeltaButton>
+        <div className="grid grid-cols-3 gap-2 border-t border-white/10 p-3">
+          <button
+            type="button"
+            onClick={() => setInviteOpen(true)}
+            className="rounded-lg bg-white/10 px-3 py-2 text-sm font-medium hover:bg-white/15"
+          >
+            Invite
+          </button>
+          <button
+            type="button"
+            disabled={!isHost}
+            onClick={() => onMuteAll?.()}
+            className="rounded-lg bg-white/10 px-3 py-2 text-sm font-medium hover:bg-white/15 disabled:opacity-40"
+          >
+            Mute All
+          </button>
+          <button
+            type="button"
+            className="rounded-lg bg-white/10 px-3 py-2 text-sm font-medium hover:bg-white/15"
+          >
+            More
+          </button>
+        </div>
       </aside>
 
       <InvitePeopleModal

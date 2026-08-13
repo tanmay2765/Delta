@@ -1,40 +1,37 @@
 import { Link } from "@tanstack/react-router";
-import { CalendarClock, Link2, Sparkles, VideoIcon } from "lucide-react";
-import { GlassCard } from "@/components/ui/glass-card";
+import { CalendarClock, Link2, Share2, VideoIcon } from "lucide-react";
 
 export function QuickActions() {
   return (
-    <div className="grid gap-4 md:grid-cols-3">
+    <div className="grid gap-4 md:grid-cols-4">
       <Link
         to="/new-meeting"
-        className="glow-primary group relative flex flex-col justify-between overflow-hidden rounded-2xl bg-rail p-5 transition-transform hover:-translate-y-0.5"
+        className="group flex flex-col items-center justify-center gap-3 rounded-2xl bg-[#0e72ed] p-6 text-center text-white transition-transform hover:-translate-y-0.5 hover:bg-[#0b5cff]"
       >
-        <span className="absolute right-4 top-4 grid h-7 w-7 place-items-center rounded-full bg-primary/20 text-primary-glow">
-          <Sparkles className="h-3.5 w-3.5" />
+        <span className="grid h-14 w-14 place-items-center rounded-2xl bg-white/15">
+          <VideoIcon className="h-7 w-7" />
         </span>
-        <div className="flex items-center gap-3">
-          <span className="grid h-12 w-12 place-items-center rounded-xl bg-glass text-primary-glow">
-            <VideoIcon className="h-5 w-5" />
-          </span>
-          <div>
-            <p className="text-sm font-medium text-primary-glow">New Meeting</p>
-            <p className="text-xl font-semibold tracking-tight">Join instantly</p>
-          </div>
-        </div>
+        <span>
+          <span className="block text-lg font-semibold">New Meeting</span>
+          <span className="block text-sm text-white/80">Start instantly</span>
+        </span>
       </Link>
 
-      <ActionCard
-        to="/join"
-        icon={<Link2 className="h-5 w-5" />}
-        title="Join Meeting"
-        subtitle="Meeting ID"
-      />
-      <ActionCard
-        to="/schedule"
-        icon={<CalendarClock className="h-5 w-5" />}
-        title="Schedule Meeting"
-        subtitle="Plan future call"
-      />
+      <ActionCard to="/join" icon={<Link2 className="h-6 w-6" />} title="Join" subtitle="Meeting ID" />
+      <ActionCard to="/schedule" icon={<CalendarClock className="h-6 w-6" />} title="Schedule" subtitle="Plan ahead" />
+      <button
+        type="button"
+        onClick={() => void navigator.clipboard.writeText(window.location.origin)}
+        className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-glass-border bg-glass p-6 text-center transition-colors hover:bg-glass-strong"
+      >
+        <span className="grid h-14 w-14 place-items-center rounded-2xl bg-glass text-foreground">
+          <Share2 className="h-6 w-6" />
+        </span>
+        <span>
+          <span className="block text-lg font-semibold">Share screen</span>
+          <span className="block text-sm text-muted-foreground">Copy app link</span>
+        </span>
+      </button>
     </div>
   );
 }
@@ -51,16 +48,15 @@ function ActionCard({
   subtitle: string;
 }) {
   return (
-    <GlassCard variant="soft" className="transition-colors hover:bg-glass-strong" as="div">
-      <Link to={to} className="flex h-full items-center gap-4 p-5">
-        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-glass text-foreground">
-          {icon}
-        </span>
-        <span className="min-w-0">
-          <span className="block truncate text-lg font-semibold tracking-tight">{title}</span>
-          <span className="block truncate text-sm text-muted-foreground">{subtitle}</span>
-        </span>
-      </Link>
-    </GlassCard>
+    <Link
+      to={to}
+      className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-glass-border bg-glass p-6 text-center transition-colors hover:bg-glass-strong"
+    >
+      <span className="grid h-14 w-14 place-items-center rounded-2xl bg-secondary text-foreground">{icon}</span>
+      <span>
+        <span className="block text-lg font-semibold">{title}</span>
+        <span className="block text-sm text-muted-foreground">{subtitle}</span>
+      </span>
+    </Link>
   );
 }

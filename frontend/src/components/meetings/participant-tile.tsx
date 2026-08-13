@@ -18,13 +18,21 @@ export function ParticipantTile({
   className?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const showLiveVideo = participant.isSelf && participant.cameraOn && stream;
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const showLiveVideo = participant.cameraOn && stream;
+  const playRemoteAudio = !participant.isSelf && participant.micOn && stream;
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     video.srcObject = showLiveVideo ? stream : null;
   }, [showLiveVideo, stream]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.srcObject = playRemoteAudio && !showLiveVideo ? stream : null;
+  }, [playRemoteAudio, showLiveVideo, stream]);
 
   return (
     <button
@@ -35,7 +43,7 @@ export function ParticipantTile({
         "group relative overflow-hidden rounded-2xl border bg-linear-to-br from-secondary to-rail text-left transition-all",
         large ? "absolute inset-0 h-full w-full" : "aspect-video w-full",
         participant.speaking
-          ? "border-primary/70 shadow-[0_0_28px_-6px_var(--primary)]"
+          ? "border-[#00a884]/80 shadow-[0_0_20px_-4px_#00a884]"
           : "border-glass-border",
         className,
       )}
@@ -46,8 +54,8 @@ export function ParticipantTile({
             ref={videoRef}
             autoPlay
             playsInline
-            muted
-            className="h-full w-full object-cover mirror"
+            muted={participant.isSelf}
+            className={cn("h-full w-full object-cover", participant.isSelf && "mirror")}
           />
         ) : participant.cameraOn ? (
           <DeltaAvatar name={participant.name} size={large ? "xl" : "lg"} />
@@ -62,6 +70,10 @@ export function ParticipantTile({
           </span>
         )}
       </span>
+
+      {playRemoteAudio && !showLiveVideo && (
+        <audio ref={audioRef} autoPlay playsInline className="hidden" />
+      )}
 
       <span className="absolute inset-x-2 bottom-2 flex items-center justify-between gap-2 rounded-lg bg-rail/70 px-2.5 py-1.5 backdrop-blur-md">
         <span className="truncate text-xs font-medium">

@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.routers.realtime import broadcast_meeting_ended, broadcast_meeting_state
+from app.routers.realtime import broadcast_meeting_ended, broadcast_meeting_state, broadcast_participant_removed
 from app.schemas import (
+    HostSessionRequest,
     InstantMeetingCreate,
     JoinMeetingRequest,
     JoinMeetingResponse,
@@ -82,6 +83,11 @@ def list_upcoming_meetings(db: Session = Depends(get_db)) -> list[MeetingRespons
 def list_recent_meetings(db: Session = Depends(get_db)) -> list[MeetingResponse]:
     meetings = meeting_service.get_recent_meetings(db)
     return [_meeting_response(meeting) for meeting in meetings]
+
+
+@router.get("/activity")
+def meeting_activity(db: Session = Depends(get_db)) -> list[dict]:
+    return meeting_service.get_meeting_activity(db)
 
 
 @router.get("/invite/{invite_code}", response_model=MeetingResponse)
@@ -253,11 +259,21 @@ async def leave_meeting(
 
 
 @router.get("/{meeting_id}/join-requests", response_model=list[JoinRequestResponse])
-def list_join_requests(meeting_id: str, db: Session = Depends(get_db)) -> list[JoinRequestResponse]:
+def list_join_requests(
+    meeting_id: str,
+    host_participant_id: int,
+    host_session_token: str,
+    db: Session = Depends(get_db),
+) -> list[JoinRequestResponse]:
     try:
-        requests = meeting_service.list_join_requests(db, meeting_id)
+        requests = meeting_service.list_join_requests(
+            db,
+            meeting_id,
+            host_participant_id,
+            host_session_token,
+        )
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     return [JoinRequestResponse.model_validate(item) for item in requests]
 
 
@@ -268,12 +284,20 @@ def list_join_requests(meeting_id: str, db: Session = Depends(get_db)) -> list[J
 async def approve_join_request(
     meeting_id: str,
     request_id: int,
+    payload: HostSessionRequest,
+    host_participant_id: int,
     db: Session = Depends(get_db),
 ) -> JoinRequestActionResponse:
     try:
-        join_request, participant = meeting_service.approve_join_request(db, meeting_id, request_id)
+        join_request, participant = meeting_service.approve_join_request(
+            db,
+            meeting_id,
+            request_id,
+            host_participant_id,
+            payload.session_token,
+        )
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
     await broadcast_meeting_state(meeting_id)
     return JoinRequestActionResponse(
@@ -289,12 +313,20 @@ async def approve_join_request(
 async def deny_join_request(
     meeting_id: str,
     request_id: int,
+    payload: HostSessionRequest,
+    host_participant_id: int,
     db: Session = Depends(get_db),
 ) -> JoinRequestResponse:
     try:
-        join_request = meeting_service.deny_join_request(db, meeting_id, request_id)
+        join_request = meeting_service.deny_join_request(
+            db,
+            meeting_id,
+            request_id,
+            host_participant_id,
+            payload.session_token,
+        )
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     return JoinRequestResponse.model_validate(join_request)
 
 
@@ -323,11 +355,68 @@ def invite_to_meeting(
     )
 
 
-@router.post("/{meeting_id}/end", response_model=MeetingResponse)
-async def end_meeting(meeting_id: str, db: Session = Depends(get_db)) -> MeetingResponse:
+@router.post("/{meeting_id}/participants/mute-all", response_model=MeetingResponse)
+async def mute_all_participants(
+    meeting_id: str,
+    payload: HostSessionRequest,
+    host_participant_id: int,
+    db: Session = Depends(get_db),
+) -> MeetingResponse:
     try:
-        meeting = meeting_service.end_meeting(db, meeting_id)
+        meeting = meeting_service.mute_all_participants(
+            db,
+            meeting_id,
+            host_participant_id,
+            payload.session_token,
+        )
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+    await broadcast_meeting_state(meeting_id)
+    return _meeting_response(meeting)
+
+
+@router.post(
+    "/{meeting_id}/participants/{participant_id}/remove",
+    response_model=ParticipantResponse,
+)
+async def remove_participant(
+    meeting_id: str,
+    participant_id: int,
+    payload: HostSessionRequest,
+    host_participant_id: int,
+    db: Session = Depends(get_db),
+) -> ParticipantResponse:
+    try:
+        participant = meeting_service.remove_participant(
+            db,
+            meeting_id,
+            host_participant_id,
+            payload.session_token,
+            participant_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+    await broadcast_participant_removed(meeting_id, participant_id)
+    return _participant_response(participant)
+
+
+@router.post("/{meeting_id}/end", response_model=MeetingResponse)
+async def end_meeting(
+    meeting_id: str,
+    payload: HostSessionRequest,
+    host_participant_id: int,
+    db: Session = Depends(get_db),
+) -> MeetingResponse:
+    try:
+        meeting = meeting_service.end_meeting(
+            db,
+            meeting_id,
+            host_participant_id,
+            payload.session_token,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     await broadcast_meeting_ended(meeting_id)
     return _meeting_response(meeting)

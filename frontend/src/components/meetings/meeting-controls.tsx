@@ -1,16 +1,19 @@
 import {
-  Circle,
+  ChevronUp,
+  Heart,
+  LayoutGrid,
   MessageSquare,
   Mic,
   MicOff,
   MonitorUp,
   MoreHorizontal,
   PhoneOff,
+  Shield,
+  Sparkles,
   Users,
   Video,
   VideoOff,
 } from "lucide-react";
-import { DeltaButton } from "@/components/ui/delta-button";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
@@ -20,96 +23,136 @@ export interface MeetingControlsProps {
   micAllowed: boolean;
   cameraAllowed: boolean;
   sharing: boolean;
-  recording: boolean;
   participantsOpen: boolean;
   chatOpen: boolean;
+  reactOpen: boolean;
+  transcriptOpen: boolean;
+  galleryView: boolean;
   unreadChat: number;
   participantCount: number;
+  isHost: boolean;
   onToggleMic: () => void;
   onToggleCamera: () => void;
   onToggleShare: () => void;
-  onToggleRecording: () => void;
   onToggleParticipants: () => void;
   onToggleChat: () => void;
-  onMore: () => void;
-  onLeave: () => void;
+  onToggleReact: () => void;
+  onToggleTranscript: () => void;
+  onToggleGallery: () => void;
+  onEnd: () => void;
 }
 
 export function MeetingControls(props: MeetingControlsProps) {
   return (
-    <div className="glass-panel mx-auto flex w-full max-w-3xl items-center justify-center gap-1.5 overflow-x-auto rounded-2xl bg-card/70 px-3 py-3 sm:gap-3 sm:px-5">
-      <ControlButton
-        label={props.micAllowed ? (props.micOn ? "Mute" : "Unmute") : "Mic blocked by host"}
-        active={props.micOn}
-        disabled={!props.micAllowed}
-        onClick={props.onToggleMic}
-        icon={props.micOn ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
-      />
-      <ControlButton
-        label={props.cameraAllowed ? "Camera" : "Camera blocked by host"}
-        active={props.cameraOn}
-        disabled={!props.cameraAllowed}
-        onClick={props.onToggleCamera}
-        icon={props.cameraOn ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
-      />
-      <ControlButton
-        label="Share"
-        active={props.sharing}
-        onClick={props.onToggleShare}
-        icon={<MonitorUp className="h-5 w-5" />}
-      />
-      <ControlButton
-        label="Record"
-        active={props.recording}
-        onClick={props.onToggleRecording}
-        icon={<Circle className={cn("h-5 w-5", props.recording && "fill-current")} />}
-      />
-      <ControlButton
-        label="People"
-        active={props.participantsOpen}
-        onClick={props.onToggleParticipants}
-        icon={<Users className="h-5 w-5" />}
-        badge={props.participantCount}
-      />
-      <ControlButton
-        label="Chat"
-        active={props.chatOpen}
-        onClick={props.onToggleChat}
-        icon={<MessageSquare className="h-5 w-5" />}
-        badge={props.unreadChat > 0 ? props.unreadChat : undefined}
-        badgeTone="danger"
-      />
-      <ControlButton
-        label="More"
-        active={false}
-        onClick={props.onMore}
-        icon={<MoreHorizontal className="h-5 w-5" />}
-      />
+    <footer className="meeting-toolbar flex w-full items-end justify-center gap-1 px-2 pb-3 pt-2 sm:gap-2 sm:px-4">
+      <div className="flex max-w-5xl flex-1 items-end justify-center gap-0.5 overflow-x-auto sm:gap-1">
+        <ToolbarControl
+          label={props.micAllowed ? (props.micOn ? "Mute" : "Unmute") : "Mute"}
+          icon={props.micOn && props.micAllowed ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5 text-red-400" />}
+          active={props.micOn && props.micAllowed}
+          disabled={!props.micAllowed}
+          onClick={props.onToggleMic}
+          chevron
+        />
+        <ToolbarControl
+          label={props.cameraAllowed ? "Video" : "Video"}
+          icon={props.cameraOn && props.cameraAllowed ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5 text-red-400" />}
+          active={props.cameraOn && props.cameraAllowed}
+          disabled={!props.cameraAllowed}
+          onClick={props.onToggleCamera}
+          chevron
+        />
+        <ToolbarControl
+          label="Participants"
+          icon={<Users className="h-5 w-5" />}
+          active={props.participantsOpen}
+          onClick={props.onToggleParticipants}
+          badge={props.participantCount}
+          chevron
+        />
+        <ToolbarControl
+          label="Chat"
+          icon={<MessageSquare className="h-5 w-5" />}
+          active={props.chatOpen}
+          onClick={props.onToggleChat}
+          badge={props.unreadChat > 0 ? props.unreadChat : undefined}
+          chevron
+        />
+        <ToolbarControl
+          label="React"
+          icon={<Heart className="h-5 w-5" />}
+          active={props.reactOpen}
+          onClick={props.onToggleReact}
+          chevron
+        />
+        <ToolbarControl
+          label="Share"
+          icon={<MonitorUp className="h-5 w-5" />}
+          active={props.sharing}
+          onClick={props.onToggleShare}
+          variant="share"
+        />
+        {props.isHost && (
+          <ToolbarControl
+            label="Host tools"
+            icon={<Shield className="h-5 w-5" />}
+            active={false}
+            onClick={props.onToggleParticipants}
+          />
+        )}
+        <ToolbarControl
+          label="Delta AI"
+          icon={<Sparkles className="h-5 w-5" />}
+          active={props.transcriptOpen}
+          onClick={props.onToggleTranscript}
+        />
+        <ToolbarControl
+          label="Views"
+          icon={<LayoutGrid className="h-5 w-5" />}
+          active={props.galleryView}
+          onClick={props.onToggleGallery}
+        />
+        <ToolbarControl
+          label="More"
+          icon={<MoreHorizontal className="h-5 w-5" />}
+          active={false}
+          onClick={props.onToggleGallery}
+        />
+      </div>
 
-      <DeltaButton variant="danger" className="ml-1 shrink-0 sm:ml-3" onClick={props.onLeave}>
-        <PhoneOff className="h-4 w-4" />
-        <span className="hidden sm:inline">Leave</span>
-      </DeltaButton>
-    </div>
+      <button
+        type="button"
+        onClick={props.onEnd}
+        className="ml-2 flex shrink-0 flex-col items-center gap-1 pb-0.5"
+        aria-label="End meeting"
+      >
+        <span className="grid h-12 w-14 place-items-center rounded-xl bg-red-600 text-white sm:h-14 sm:w-16">
+          <PhoneOff className="h-5 w-5" />
+        </span>
+        <span className="hidden text-[11px] text-white/80 sm:block">End</span>
+      </button>
+    </footer>
   );
 }
 
-function ControlButton({
+function ToolbarControl({
   label,
   icon,
   active,
   disabled,
   onClick,
+  chevron,
   badge,
-  badgeTone = "primary",
+  variant = "default",
 }: {
   label: string;
   icon: ReactNode;
-  active: boolean;
+  active?: boolean;
   disabled?: boolean;
   onClick: () => void;
-  badge?: number | undefined;
-  badgeTone?: "primary" | "danger";
+  chevron?: boolean;
+  badge?: number;
+  variant?: "default" | "share";
 }) {
   return (
     <button
@@ -118,31 +161,31 @@ function ControlButton({
       disabled={disabled}
       aria-pressed={active}
       aria-label={label}
-      title={label}
-      className="group flex shrink-0 flex-col items-center gap-1 disabled:cursor-not-allowed disabled:opacity-40"
+      className={cn(
+        "group flex shrink-0 flex-col items-center gap-0.5 disabled:cursor-not-allowed disabled:opacity-40",
+      )}
     >
       <span
         className={cn(
-          "relative grid h-11 w-12 place-items-center rounded-xl transition-colors sm:h-12 sm:w-14",
-          active ? "bg-primary/25 text-primary-glow" : "bg-secondary text-muted-foreground",
-          !disabled && "group-hover:brightness-125",
+          "relative flex h-12 items-center rounded-xl sm:h-14",
+          variant === "share"
+            ? "bg-[#00a884] px-3 text-white"
+            : active
+              ? "bg-white/15 px-3 text-white"
+              : "bg-transparent px-3 text-white/90 hover:bg-white/10",
         )}
       >
         {icon}
         {badge !== undefined && (
-          <span
-            className={cn(
-              "absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full px-1 text-[10px] font-semibold",
-              badgeTone === "danger"
-                ? "bg-destructive text-destructive-foreground"
-                : "bg-primary text-primary-foreground",
-            )}
-          >
+          <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-[#0e72ed] px-1 text-[10px] font-semibold text-white">
             {badge}
           </span>
         )}
+        {chevron && (
+          <ChevronUp className="ml-0.5 h-3 w-3 opacity-60" />
+        )}
       </span>
-      <span className="hidden text-[11px] text-muted-foreground sm:block">{label}</span>
+      <span className="hidden max-w-[4.5rem] truncate text-[10px] text-white/70 sm:block">{label}</span>
     </button>
   );
 }

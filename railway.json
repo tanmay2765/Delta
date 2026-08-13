@@ -1,0 +1,26 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "services": {
+    "backend": {
+      "build": {
+        "dockerfilePath": "backend/Dockerfile",
+        "watchPatterns": ["backend/**"]
+      },
+      "deploy": {
+        "startCommand": "uvicorn app.main:app --host 0.0.0.0 --port $PORT",
+        "healthcheckPath": "/",
+        "restartPolicyType": "ON_FAILURE"
+      }
+    },
+    "frontend": {
+      "build": {
+        "dockerfilePath": "frontend/Dockerfile",
+        "watchPatterns": ["frontend/**"]
+      },
+      "deploy": {
+        "startCommand": "node .output/server/index.mjs",
+        "restartPolicyType": "ON_FAILURE"
+      }
+    }
+  }
+}

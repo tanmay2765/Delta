@@ -1,6 +1,7 @@
-import { Link, useRouterState } from "@tanstack/react-router";
-import { Calendar, Home, LogOut, User, Users, Video } from "lucide-react";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Calendar, Home, LogOut, Settings, User, Users, Video } from "lucide-react";
 import { DeltaLogo } from "@/components/ui/delta-logo";
+import { clearAuth } from "@/lib/auth-storage";
 import { cn } from "@/lib/utils";
 
 export const NAV_ITEMS = [
@@ -9,9 +10,11 @@ export const NAV_ITEMS = [
   { to: "/schedule", label: "Schedule", icon: Calendar },
   { to: "/join", label: "Join", icon: Users },
   { to: "/profile", label: "Profile", icon: User },
+  { to: "/settings", label: "Settings", icon: Settings },
 ] as const;
 
 export function Sidebar() {
+  const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   return (
@@ -43,14 +46,18 @@ export function Sidebar() {
         </nav>
       </div>
 
-      <Link
-        to="/login"
-        aria-label="Sign out"
-        title="Sign out"
+      <button
+        type="button"
+        onClick={() => {
+          clearAuth();
+          navigate({ to: "/" });
+        }}
+        aria-label="Reset session"
+        title="Reset session"
         className="grid h-11 w-11 place-items-center rounded-full border border-glass-border text-sidebar-foreground/70 transition-colors hover:text-foreground"
       >
         <LogOut className="h-5 w-5" />
-      </Link>
+      </button>
     </aside>
   );
 }

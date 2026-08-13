@@ -1,13 +1,20 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, ShieldCheck } from "lucide-react";
+import { Copy, Info, LayoutGrid, ShieldCheck } from "lucide-react";
 import { MeetingControls } from "@/components/meetings/meeting-controls";
 import { ParticipantTile } from "@/components/meetings/participant-tile";
 import { ParticipantsPanel } from "@/components/meetings/participants-panel";
-import { MediaPermissionPrompt } from "@/components/meetings/media-permission-prompt";
+import { PreJoinModal } from "@/components/meetings/pre-join-modal";
+import { FloatingReaction, ReactionPicker } from "@/components/meetings/reaction-picker";
+import { MeetingChatPanel, type ChatMessage } from "@/components/meetings/meeting-chat-panel";
+import { TranscriptPanel } from "@/components/meetings/transcript-panel";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { DeltaAvatar } from "@/components/ui/delta-avatar";
+import { displayNameFromUser, getStoredUser } from "@/lib/auth-storage";
 import { useLocalMedia } from "@/hooks/useLocalMedia";
 import { useMeetingRealtime } from "@/hooks/useMeetingRealtime";
+import { useWebRTCMesh, type SignalingMessage } from "@/hooks/useWebRTCMesh";
 import { api, mapMeetingFromBackend } from "@/lib/api";
 import {
   clearMeetingSession,
@@ -42,13 +49,20 @@ function MeetingRoom() {
     isRequesting,
     requestAccess,
     hasStream,
+    sharing,
+    startScreenShare,
+    stopScreenShare,
   } = useLocalMedia(true, true);
 
-  const [sharing, setSharing] = useState(false);
-  const [recording, setRecording] = useState(false);
   const [participantsOpen, setParticipantsOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const [reactOpen, setReactOpen] = useState(false);
+  const [galleryView, setGalleryView] = useState(false);
+  const [preJoinSkipped, setPreJoinSkipped] = useState(false);
+  const [floatingReaction, setFloatingReaction] = useState<string | null>(null);
   const [unreadChat, setUnreadChat] = useState(0);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [timer, setTimer] = useState(0);
 
   useEffect(() => {
@@ -136,11 +150,74 @@ function MeetingRoom() {
     navigate({ to: "/" });
   }, [meetingId, navigate, stopStream]);
 
-  useMeetingRealtime(meetingId, session, handleMeetingUpdate, handleMeetingEnded);
+  const handleRemoved = useCallback(() => {
+    stopStream();
+    clearMeetingSession(meetingId);
+    navigate({ to: "/" });
+  }, [meetingId, navigate, stopStream]);
+
+  const signalingHandlerRef = useRef<(message: SignalingMessage) => void>(() => {});
+
+  const handleChatMessage = useCallback(
+    (payload: { from: number; sender_name: string; text: string; sent_at: string }) => {
+      const message: ChatMessage = {
+        id: `${payload.from}-${payload.sent_at}`,
+        senderName: payload.sender_name,
+        text: payload.text,
+        isSelf: payload.from === session?.participantId,
+        sentAt: payload.sent_at,
+      };
+      setChatMessages((current) => [...current, message]);
+      if (!chatOpen) {
+        setUnreadChat((count) => count + 1);
+      }
+    },
+    [chatOpen, session?.participantId],
+  );
+
+  const { sendSignaling, sendChatMessage, sendReaction } = useMeetingRealtime(
+    meetingId,
+    session,
+    handleMeetingUpdate,
+    handleMeetingEnded,
+    (message) => signalingHandlerRef.current(message),
+    handleChatMessage,
+    (payload) => {
+      setFloatingReaction(payload.emoji);
+      window.setTimeout(() => setFloatingReaction(null), 2500);
+    },
+    handleRemoved,
+  );
+
+  const remoteParticipants = useMemo(
+    () =>
+      (meeting?.participants ?? [])
+        .filter((participant) => participant.id !== String(session?.participantId))
+        .map((participant) => ({ id: participant.id })),
+    [meeting?.participants, session?.participantId],
+  );
+
+  const { remoteStreams, handleSignalingMessage } = useWebRTCMesh(
+    session?.participantId,
+    canUseMedia && hasStream ? stream : null,
+    remoteParticipants,
+    sendSignaling,
+  );
+
+  useEffect(() => {
+    signalingHandlerRef.current = (message) => {
+      void handleSignalingMessage(message);
+    };
+  }, [handleSignalingMessage]);
 
   const { data: joinRequests = [] } = useQuery({
     queryKey: ["join-requests", meetingId],
-    queryFn: () => api.listJoinRequests(meetingId),
+    queryFn: () => {
+      if (!session?.participantId || !session.sessionToken) {
+        throw new Error("Missing host session");
+      }
+      return api.listJoinRequests(meetingId, session.participantId, session.sessionToken);
+    },
     enabled: sessionReady && Boolean(session?.isHost),
     refetchInterval: session?.isHost ? 5000 : false,
   });
@@ -230,16 +307,59 @@ function MeetingRoom() {
   });
 
   const approveMutation = useMutation({
-    mutationFn: (requestId: number) => api.approveJoinRequest(meetingId, requestId),
+    mutationFn: (requestId: number) => {
+      if (!session?.participantId || !session.sessionToken) {
+        throw new Error("Missing host session");
+      }
+      return api.approveJoinRequest(
+        meetingId,
+        requestId,
+        session.participantId,
+        session.sessionToken,
+      );
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["join-requests", meetingId] });
     },
   });
 
   const denyMutation = useMutation({
-    mutationFn: (requestId: number) => api.denyJoinRequest(meetingId, requestId),
+    mutationFn: (requestId: number) => {
+      if (!session?.participantId || !session.sessionToken) {
+        throw new Error("Missing host session");
+      }
+      return api.denyJoinRequest(
+        meetingId,
+        requestId,
+        session.participantId,
+        session.sessionToken,
+      );
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["join-requests", meetingId] });
+    },
+  });
+
+  const muteAllMutation = useMutation({
+    mutationFn: () => {
+      if (!session?.participantId || !session.sessionToken) {
+        throw new Error("Missing host session");
+      }
+      return api.muteAllParticipants(meetingId, session.participantId, session.sessionToken);
+    },
+  });
+
+  const removeParticipantMutation = useMutation({
+    mutationFn: (participantId: string) => {
+      if (!session?.participantId || !session.sessionToken) {
+        throw new Error("Missing host session");
+      }
+      return api.removeParticipant(
+        meetingId,
+        session.participantId,
+        session.sessionToken,
+        Number(participantId),
+      );
     },
   });
 
@@ -247,7 +367,11 @@ function MeetingRoom() {
     stopStream();
     if (session?.participantId && session.sessionToken) {
       try {
-        await api.leaveMeeting(meetingId, session.participantId, session.sessionToken);
+        if (session.isHost) {
+          await api.endMeeting(meetingId, session.participantId, session.sessionToken);
+        } else {
+          await api.leaveMeeting(meetingId, session.participantId, session.sessionToken);
+        }
       } catch {
         // Leave locally even if API fails.
       }
@@ -284,7 +408,6 @@ function MeetingRoom() {
       isSelf,
       micOn: isSelf ? micOn : p.micOn,
       cameraOn: isSelf ? cameraOn : p.cameraOn,
-      sharingScreen: isSelf ? sharing : p.sharingScreen,
     };
   });
 
@@ -295,135 +418,175 @@ function MeetingRoom() {
     joinedParticipants[0];
   const otherParticipants = joinedParticipants.filter((p) => p.id !== activeSpeaker?.id);
 
+  const streamForParticipant = (participant: Participant) => {
+    if (participant.isSelf) return stream;
+    return remoteStreams.get(participant.id) ?? null;
+  };
+
+  const showPreJoin = canUseMedia && !hasStream && !preJoinSkipped;
+  const user = getStoredUser();
+
   return (
-    <div className="ambient-bg flex min-h-screen flex-col">
-      <header className="flex h-16 items-center justify-between px-4 sm:px-6">
+    <div className="meeting-room flex min-h-screen flex-col">
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-white/10 px-4">
+        <div className="flex min-w-0 items-center gap-2 text-sm text-white/90">
+          <Info className="h-4 w-4 shrink-0 text-white/60" />
+          <span className="truncate">{session.displayName}&apos;s Delta Meeting</span>
+        </div>
         <div className="flex items-center gap-3">
           <StatusBadge tone="success" dot>
-            {meeting.startedAt ? formatTime(timer) : "Waiting for host"}
+            {meeting.startedAt ? formatTime(timer) : "00:00"}
           </StatusBadge>
-          <div className="hidden h-4 w-px bg-glass-border sm:block" />
-          <h1 className="hidden text-base font-medium sm:block">{meeting.title}</h1>
+          <ShieldCheck className="h-4 w-4 text-green-500" />
           <button
-            onClick={() => navigator.clipboard.writeText(meetingId)}
-            className="hidden items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-glass hover:text-foreground sm:flex"
-            title="Copy Meeting ID"
+            type="button"
+            onClick={() => setGalleryView(!galleryView)}
+            className="rounded-lg p-1.5 text-white/70 hover:bg-white/10"
+            aria-label="Toggle gallery view"
           >
-            {meetingId.replace(/(\d{3})(\d{3})(\d{3})/, "$1 $2 $3")}
-            <Copy className="h-3 w-3" />
+            <LayoutGrid className="h-4 w-4" />
           </button>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-1.5 rounded-lg bg-glass px-3 py-1.5 text-xs font-medium text-success sm:flex">
-            <ShieldCheck className="h-4 w-4" />
-            Encrypted
-          </div>
+          <DeltaAvatar name={displayNameFromUser(user, session.displayName)} size="sm" />
         </div>
       </header>
 
-      <main className="relative flex min-h-0 flex-1 flex-col p-4 pt-0">
-        <div className="flex min-h-0 flex-1 flex-col gap-4">
-          <div className="relative min-h-[320px] flex-1 overflow-hidden rounded-2xl bg-black lg:min-h-0">
-            {activeSpeaker && (
-              <ParticipantTile
-                participant={activeSpeaker}
-                large
-                stream={activeSpeaker.isSelf ? stream : null}
-              />
-            )}
+      <main className="relative flex min-h-0 flex-1 flex-col">
+        <div className="relative min-h-0 flex-1 bg-[#1a1a1a] p-2">
+          {floatingReaction && <FloatingReaction emoji={floatingReaction} />}
 
-            {otherParticipants.length > 0 && (
-              <div className="absolute right-3 top-3 flex max-h-[calc(100%-1rem)] w-[160px] flex-col gap-2 overflow-y-auto lg:w-[200px]">
-                {otherParticipants.map((p) => (
-                  <ParticipantTile key={p.id} participant={p} stream={p.isSelf ? stream : null} />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {canUseMedia && !hasStream && (
-            <MediaPermissionPrompt
-              onEnable={() => void requestAccess()}
-              isRequesting={isRequesting}
-              error={mediaError}
-            />
+          {galleryView || joinedParticipants.length > 3 ? (
+            <div className="grid h-full min-h-[280px] grid-cols-2 gap-2 lg:grid-cols-3">
+              {joinedParticipants.map((p) => (
+                <ParticipantTile
+                  key={p.id}
+                  participant={{ ...p, speaking: p.id === activeSpeaker?.id }}
+                  stream={streamForParticipant(p)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="relative h-full min-h-[280px]">
+              {activeSpeaker && (
+                <ParticipantTile
+                  participant={{ ...activeSpeaker, speaking: true }}
+                  large
+                  stream={streamForParticipant(activeSpeaker)}
+                />
+              )}
+              {otherParticipants.length > 0 && (
+                <div className="absolute right-2 top-2 flex max-h-[calc(100%-1rem)] w-[140px] flex-col gap-2 overflow-y-auto sm:w-[180px]">
+                  {otherParticipants.map((p) => (
+                    <ParticipantTile key={p.id} participant={p} stream={streamForParticipant(p)} />
+                  ))}
+                </div>
+              )}
+            </div>
           )}
 
           {!canUseMedia && !session.isHost && (
-            <p className="text-center text-sm text-muted-foreground">
+            <p className="absolute inset-x-0 bottom-4 text-center text-sm text-white/60">
               Waiting for the host to allow your microphone and camera.
             </p>
           )}
-
-          <div className="mt-auto shrink-0 pt-2 pb-4">
-            <MeetingControls
-              micOn={micOn}
-              cameraOn={cameraOn}
-              micAllowed={Boolean(selfParticipant?.micAllowed || session.isHost)}
-              cameraAllowed={Boolean(selfParticipant?.cameraAllowed || session.isHost)}
-              sharing={sharing}
-              recording={recording}
-              participantsOpen={participantsOpen}
-              chatOpen={chatOpen}
-              unreadChat={unreadChat}
-              participantCount={joinedParticipants.length}
-              onToggleMic={handleToggleMic}
-              onToggleCamera={handleToggleCamera}
-              onToggleShare={() => setSharing(!sharing)}
-              onToggleRecording={() => setRecording(!recording)}
-              onToggleParticipants={() => setParticipantsOpen(!participantsOpen)}
-              onToggleChat={() => {
-                setChatOpen(!chatOpen);
-                setUnreadChat(0);
-              }}
-              onMore={() => {}}
-              onLeave={handleLeave}
-            />
-          </div>
         </div>
 
-        {participantsOpen && (
-          <div className="absolute inset-y-0 right-4 z-20 hidden w-[320px] py-0 lg:block">
-            <ParticipantsPanel
-              participants={participants}
-              onClose={() => setParticipantsOpen(false)}
-              meetingId={meetingId}
-              inviteCode={meeting.inviteCode}
-              meetingTitle={meeting.title}
-              isHost={Boolean(session.isHost)}
-              joinRequests={joinRequests as JoinRequest[]}
-              onApproveRequest={(id) => approveMutation.mutate(id)}
-              onDenyRequest={(id) => denyMutation.mutate(id)}
-              onToggleMicPermission={(participantId, allowed) =>
-                permissionMutation.mutate({ participantId, micAllowed: allowed })
-              }
-              onToggleCameraPermission={(participantId, allowed) =>
-                permissionMutation.mutate({ participantId, cameraAllowed: allowed })
-              }
-            />
-          </div>
-        )}
+        <div className="relative shrink-0">
+          <ReactionPicker
+            open={reactOpen}
+            onPick={(emoji) => sendReaction(emoji)}
+            onClose={() => setReactOpen(false)}
+          />
+          <MeetingControls
+            micOn={micOn}
+            cameraOn={cameraOn}
+            micAllowed={Boolean(selfParticipant?.micAllowed || session.isHost)}
+            cameraAllowed={Boolean(selfParticipant?.cameraAllowed || session.isHost)}
+            sharing={sharing}
+            participantsOpen={participantsOpen}
+            chatOpen={chatOpen}
+            reactOpen={reactOpen}
+            transcriptOpen={transcriptOpen}
+            galleryView={galleryView}
+            unreadChat={unreadChat}
+            participantCount={joinedParticipants.length}
+            isHost={Boolean(session.isHost)}
+            onToggleMic={handleToggleMic}
+            onToggleCamera={handleToggleCamera}
+            onToggleShare={() => {
+              if (sharing) void stopScreenShare();
+              else void startScreenShare();
+            }}
+            onToggleParticipants={() => {
+              setParticipantsOpen(!participantsOpen);
+              setChatOpen(false);
+              setTranscriptOpen(false);
+            }}
+            onToggleChat={() => {
+              setChatOpen(!chatOpen);
+              setParticipantsOpen(false);
+              setTranscriptOpen(false);
+              setUnreadChat(0);
+            }}
+            onToggleReact={() => setReactOpen(!reactOpen)}
+            onToggleTranscript={() => {
+              setTranscriptOpen(!transcriptOpen);
+              setParticipantsOpen(false);
+              setChatOpen(false);
+            }}
+            onToggleGallery={() => setGalleryView(!galleryView)}
+            onEnd={handleLeave}
+          />
+        </div>
 
-        {chatOpen && (
-          <div className="absolute inset-y-0 right-4 z-20 hidden w-[320px] py-0 lg:block">
-            <aside className="glass-panel flex h-full w-full flex-col rounded-2xl bg-card/70 p-4">
-              <div className="flex items-center justify-between gap-2 border-b border-glass-border pb-3">
-                <h2 className="text-lg font-semibold tracking-tight">Meeting Chat</h2>
-                <button
-                  onClick={() => setChatOpen(false)}
-                  className="rounded-lg p-1.5 text-muted-foreground hover:bg-glass hover:text-foreground"
-                >
-                  &times;
-                </button>
-              </div>
-              <div className="flex flex-1 items-center justify-center py-4 text-sm text-muted-foreground">
-                Chat is not available yet.
-              </div>
-            </aside>
+        {(participantsOpen || chatOpen || transcriptOpen) && (
+          <div className="absolute inset-y-0 right-0 z-20 w-full max-w-[360px] border-l border-white/10 bg-[#2d2d2d] shadow-2xl">
+            {participantsOpen && (
+              <ParticipantsPanel
+                participants={participants}
+                onClose={() => setParticipantsOpen(false)}
+                meetingId={meetingId}
+                inviteCode={meeting.inviteCode}
+                meetingTitle={meeting.title}
+                isHost={Boolean(session.isHost)}
+                joinRequests={joinRequests as JoinRequest[]}
+                onApproveRequest={(id) => approveMutation.mutate(id)}
+                onDenyRequest={(id) => denyMutation.mutate(id)}
+                onToggleMicPermission={(participantId, allowed) =>
+                  permissionMutation.mutate({ participantId, micAllowed: allowed })
+                }
+                onToggleCameraPermission={(participantId, allowed) =>
+                  permissionMutation.mutate({ participantId, cameraAllowed: allowed })
+                }
+                onMuteAll={() => muteAllMutation.mutate()}
+                onRemoveParticipant={(participantId) => removeParticipantMutation.mutate(participantId)}
+              />
+            )}
+            {chatOpen && (
+              <MeetingChatPanel
+                messages={chatMessages}
+                onSend={sendChatMessage}
+                onClose={() => setChatOpen(false)}
+              />
+            )}
+            {transcriptOpen && (
+              <TranscriptPanel
+                messages={chatMessages}
+                hostName={session.displayName}
+                onClose={() => setTranscriptOpen(false)}
+              />
+            )}
           </div>
         )}
       </main>
+
+      <PreJoinModal
+        open={showPreJoin}
+        hostName={session.displayName}
+        onEnableMedia={() => void requestAccess()}
+        onContinueWithoutMedia={() => setPreJoinSkipped(true)}
+        isRequesting={isRequesting}
+        error={mediaError}
+      />
     </div>
   );
 }

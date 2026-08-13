@@ -1,8 +1,16 @@
-import { Bell, Mic, Search } from "lucide-react";
+import { Bell, Download, LogOut, Mic, Search, Settings, User } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { DeltaAvatar } from "@/components/ui/delta-avatar";
-import { displayNameFromUser, getStoredUser, type StoredUser } from "@/lib/auth-storage";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { clearAuth, displayNameFromUser, getStoredUser, type StoredUser } from "@/lib/auth-storage";
 
 function greeting() {
   const h = new Date().getHours();
@@ -12,6 +20,7 @@ function greeting() {
 }
 
 export function Topbar({ title }: { title: string }) {
+  const navigate = useNavigate();
   const [user, setUser] = useState<StoredUser | null>(null);
 
   useEffect(() => {
@@ -51,14 +60,49 @@ export function Topbar({ title }: { title: string }) {
           <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-primary" />
         </button>
 
-        <Link
-          to="/profile"
-          className="flex items-center gap-2.5 rounded-full py-1 pr-1 transition-colors hover:bg-glass"
-          aria-label="Open profile"
-        >
-          <DeltaAvatar name={displayName} size="md" />
-          <span className="hidden text-sm font-medium sm:block">{displayName}</span>
-        </Link>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="flex items-center gap-2.5 rounded-full py-1 pr-1 transition-colors hover:bg-glass"
+              aria-label="Account menu"
+            >
+              <DeltaAvatar name={displayName} size="md" />
+              <span className="hidden text-sm font-medium sm:block">{displayName}</span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel>{displayName}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link to="/profile" className="flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Profile
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/settings" className="flex items-center gap-2">
+                <Settings className="h-4 w-4" />
+                Settings
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled className="flex items-center gap-2">
+              <Download className="h-4 w-4" />
+              Install on desktop
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="flex items-center gap-2 text-destructive"
+              onClick={() => {
+                clearAuth();
+                navigate({ to: "/" });
+              }}
+            >
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   );

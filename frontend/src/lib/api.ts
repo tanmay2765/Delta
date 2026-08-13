@@ -13,7 +13,7 @@ import type {
   ScheduleMeetingInput,
 } from "./types";
 
-export const API_URL = import.meta.env["VITE_API_URL"] ?? "http://192.168.0.102:8000";
+export const API_URL = import.meta.env["VITE_API_URL"] ?? "http://localhost:8000";
 
 class ApiClientError extends Error {
   status: number;
@@ -76,7 +76,7 @@ interface BackendInviteResponse {
 }
 
 function frontendOrigin() {
-  return typeof window !== "undefined" ? window.location.origin : "http://192.168.0.102:8081";
+  return typeof window !== "undefined" ? window.location.origin : "http://localhost:8081";
 }
 
 function inviteLinkFor(meetingId: string, inviteCode?: string) {
@@ -213,7 +213,13 @@ export const api = {
     return meetings.map(mapHistoryItem);
   },
 
-  getActivity: async (): Promise<ActivityPoint[]> => [],
+  getActivity: async (): Promise<ActivityPoint[]> => {
+    const rows = await request<Array<{ date: string; count: number }>>("/api/meetings/activity");
+    return rows.map((row) => ({
+      day: row.date,
+      minutes: row.count * 45,
+    }));
+  },
 
   getMeeting: async (id: string, selfParticipantId?: number) => {
     const meeting = await request<BackendMeeting>(`/api/meetings/${encodeURIComponent(id)}`);
@@ -369,9 +375,13 @@ export const api = {
     );
   },
 
-  listJoinRequests: async (meetingId: string): Promise<JoinRequest[]> => {
+  listJoinRequests: async (
+    meetingId: string,
+    hostParticipantId: number,
+    hostSessionToken: string,
+  ): Promise<JoinRequest[]> => {
     const items = await request<BackendJoinRequest[]>(
-      `/api/meetings/${encodeURIComponent(meetingId)}/join-requests`,
+      `/api/meetings/${encodeURIComponent(meetingId)}/join-requests?host_participant_id=${hostParticipantId}&host_session_token=${encodeURIComponent(hostSessionToken)}`,
     );
     return items.map((item) => ({
       id: item.id,
@@ -381,15 +391,27 @@ export const api = {
     }));
   },
 
-  approveJoinRequest: async (meetingId: string, requestId: number) => {
-    return request(`/api/meetings/${encodeURIComponent(meetingId)}/join-requests/${requestId}/approve`, {
+  approveJoinRequest: async (
+    meetingId: string,
+    requestId: number,
+    hostParticipantId: number,
+    hostSessionToken: string,
+  ) => {
+    return request(`/api/meetings/${encodeURIComponent(meetingId)}/join-requests/${requestId}/approve?host_participant_id=${hostParticipantId}`, {
       method: "POST",
+      body: JSON.stringify({ session_token: hostSessionToken }),
     });
   },
 
-  denyJoinRequest: async (meetingId: string, requestId: number) => {
-    return request(`/api/meetings/${encodeURIComponent(meetingId)}/join-requests/${requestId}/deny`, {
+  denyJoinRequest: async (
+    meetingId: string,
+    requestId: number,
+    hostParticipantId: number,
+    hostSessionToken: string,
+  ) => {
+    return request(`/api/meetings/${encodeURIComponent(meetingId)}/join-requests/${requestId}/deny?host_participant_id=${hostParticipantId}`, {
       method: "POST",
+      body: JSON.stringify({ session_token: hostSessionToken }),
     });
   },
 
@@ -407,10 +429,39 @@ export const api = {
     };
   },
 
-  endMeeting: async (meetingId: string) => {
-    return request<BackendMeeting>(`/api/meetings/${encodeURIComponent(meetingId)}/end`, {
-      method: "POST",
-    });
+  endMeeting: async (meetingId: string, hostParticipantId: number, hostSessionToken: string) => {
+    return request<BackendMeeting>(
+      `/api/meetings/${encodeURIComponent(meetingId)}/end?host_participant_id=${hostParticipantId}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ session_token: hostSessionToken }),
+      },
+    );
+  },
+
+  muteAllParticipants: async (meetingId: string, hostParticipantId: number, hostSessionToken: string) => {
+    return request<BackendMeeting>(
+      `/api/meetings/${encodeURIComponent(meetingId)}/participants/mute-all?host_participant_id=${hostParticipantId}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ session_token: hostSessionToken }),
+      },
+    );
+  },
+
+  removeParticipant: async (
+    meetingId: string,
+    hostParticipantId: number,
+    hostSessionToken: string,
+    targetParticipantId: number,
+  ) => {
+    return request<BackendParticipant>(
+      `/api/meetings/${encodeURIComponent(meetingId)}/participants/${targetParticipantId}/remove?host_participant_id=${hostParticipantId}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ session_token: hostSessionToken }),
+      },
+    );
   },
 };
 

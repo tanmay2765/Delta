@@ -169,13 +169,6 @@ function ScheduleMeeting() {
           primaryLabel="Done"
           onPrimary={handleDone}
           onDismiss={handleDone}
-          extraAction={{
-            label: "Add to Calendar",
-            onClick: () => {
-              // Stub for Add to Calendar functionality
-              alert("Added to calendar!");
-            },
-          }}
         />
       )}
     </AppShell>

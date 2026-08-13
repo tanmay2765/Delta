@@ -1,6 +1,6 @@
 import secrets
 import string
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -179,6 +179,26 @@ def get_recent_meetings(db: Session, limit: int = 10) -> list[Meeting]:
         .limit(limit)
         .all()
     )
+
+
+def get_meeting_activity(db: Session, days: int = 7) -> list[dict]:
+    """Return meeting counts grouped by day for the activity chart."""
+    now = datetime.utcnow()
+    start = now - timedelta(days=days - 1)
+    meetings = (
+        db.query(Meeting)
+        .filter(Meeting.created_at >= start.replace(hour=0, minute=0, second=0, microsecond=0))
+        .all()
+    )
+
+    labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    buckets: dict[str, int] = {label: 0 for label in labels}
+
+    for meeting in meetings:
+        label = labels[meeting.created_at.weekday()]
+        buckets[label] += 1
+
+    return [{"date": label, "count": buckets[label]} for label in labels]
 
 
 def get_meeting_details(db: Session, identifier: str) -> Meeting | None:
@@ -451,10 +471,25 @@ def leave_meeting(
     return meeting
 
 
-def list_join_requests(db: Session, meeting_identifier: str) -> list[JoinRequest]:
-    meeting = get_meeting_by_identifier(db, meeting_identifier)
-    if not meeting:
-        raise ValueError("Meeting not found")
+def verify_host_session(
+    db: Session,
+    meeting_identifier: str,
+    host_participant_id: int,
+    host_session_token: str,
+) -> tuple[Meeting, Participant]:
+    meeting, host = verify_participant_session(db, meeting_identifier, host_participant_id, host_session_token)
+    if not meeting or not host or not host.is_host:
+        raise ValueError("Only the host can perform this action")
+    return meeting, host
+
+
+def list_join_requests(
+    db: Session,
+    meeting_identifier: str,
+    host_participant_id: int,
+    host_session_token: str,
+) -> list[JoinRequest]:
+    meeting, _ = verify_host_session(db, meeting_identifier, host_participant_id, host_session_token)
     return (
         db.query(JoinRequest)
         .filter(JoinRequest.meeting_id == meeting.id, JoinRequest.status == "pending")
@@ -463,10 +498,14 @@ def list_join_requests(db: Session, meeting_identifier: str) -> list[JoinRequest
     )
 
 
-def approve_join_request(db: Session, meeting_identifier: str, request_id: int) -> tuple[JoinRequest, Participant]:
-    meeting = get_meeting_by_identifier(db, meeting_identifier)
-    if not meeting:
-        raise ValueError("Meeting not found")
+def approve_join_request(
+    db: Session,
+    meeting_identifier: str,
+    request_id: int,
+    host_participant_id: int,
+    host_session_token: str,
+) -> tuple[JoinRequest, Participant]:
+    meeting, _ = verify_host_session(db, meeting_identifier, host_participant_id, host_session_token)
 
     join_request = (
         db.query(JoinRequest)
@@ -498,10 +537,14 @@ def approve_join_request(db: Session, meeting_identifier: str, request_id: int) 
     return join_request, participant
 
 
-def deny_join_request(db: Session, meeting_identifier: str, request_id: int) -> JoinRequest:
-    meeting = get_meeting_by_identifier(db, meeting_identifier)
-    if not meeting:
-        raise ValueError("Meeting not found")
+def deny_join_request(
+    db: Session,
+    meeting_identifier: str,
+    request_id: int,
+    host_participant_id: int,
+    host_session_token: str,
+) -> JoinRequest:
+    meeting, _ = verify_host_session(db, meeting_identifier, host_participant_id, host_session_token)
 
     join_request = (
         db.query(JoinRequest)
@@ -543,10 +586,15 @@ def create_meeting_invite(
     return invite, invite_link
 
 
-def end_meeting(db: Session, identifier: str) -> Meeting:
-    meeting = get_meeting_by_identifier(db, identifier)
-    if not meeting:
-        raise ValueError("Meeting not found")
+def end_meeting(
+    db: Session,
+    identifier: str,
+    host_participant_id: int,
+    host_session_token: str,
+) -> Meeting:
+    meeting, host = verify_participant_session(db, identifier, host_participant_id, host_session_token)
+    if not meeting or not host or not host.is_host:
+        raise ValueError("Only the host can end the meeting")
     meeting.status = "ended"
     for participant in meeting.participants:
         participant.is_active = False
@@ -555,6 +603,55 @@ def end_meeting(db: Session, identifier: str) -> Meeting:
     db.commit()
     db.refresh(meeting)
     return meeting
+
+
+def mute_all_participants(
+    db: Session,
+    meeting_identifier: str,
+    host_participant_id: int,
+    host_session_token: str,
+) -> Meeting:
+    meeting, host = verify_participant_session(db, meeting_identifier, host_participant_id, host_session_token)
+    if not meeting or not host or not host.is_host:
+        raise ValueError("Only the host can mute all participants")
+
+    for participant in meeting.participants:
+        if participant.is_active and not participant.is_host:
+            participant.mic_allowed = False
+            participant.mic_on = False
+
+    db.commit()
+    db.refresh(meeting)
+    return meeting
+
+
+def remove_participant(
+    db: Session,
+    meeting_identifier: str,
+    host_participant_id: int,
+    host_session_token: str,
+    target_participant_id: int,
+) -> Participant:
+    meeting, host = verify_participant_session(db, meeting_identifier, host_participant_id, host_session_token)
+    if not meeting or not host or not host.is_host:
+        raise ValueError("Only the host can remove participants")
+
+    target = (
+        db.query(Participant)
+        .filter(Participant.id == target_participant_id, Participant.meeting_id == meeting.id)
+        .first()
+    )
+    if not target:
+        raise ValueError("Participant not found")
+    if target.is_host:
+        raise ValueError("Cannot remove the host")
+
+    target.is_active = False
+    target.mic_on = False
+    target.camera_on = False
+    db.commit()
+    db.refresh(target)
+    return target
 
 
 def meeting_to_response(meeting: Meeting) -> dict:

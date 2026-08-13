@@ -1,22 +1,24 @@
 """Remove all data from the database."""
 
-from app.database import SessionLocal, engine
-from app.models import Meeting, Participant, User
-from app.database import Base
+from app.database import Base, SessionLocal, engine, run_migrations
+from app.models import JoinRequest, Meeting, MeetingInvite, Participant, User
 
 
 def reset() -> None:
     db = SessionLocal()
     try:
+        db.query(JoinRequest).delete()
+        db.query(MeetingInvite).delete()
         db.query(Participant).delete()
         db.query(Meeting).delete()
         db.query(User).delete()
         db.commit()
-        print("All demo data removed.")
+        print("All data removed.")
     finally:
         db.close()
 
 
 if __name__ == "__main__":
     Base.metadata.create_all(bind=engine)
+    run_migrations()
     reset()

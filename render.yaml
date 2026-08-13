@@ -1,0 +1,33 @@
+# Optional: deploy via Render Blueprint (https://render.com)
+# Connect repo → New Blueprint → select render.yaml
+
+services:
+  - type: web
+    name: delta-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        value: sqlite:////data/delta.db
+      - key: CORS_ORIGINS
+        sync: false
+    disk:
+      name: delta-data
+      mountPath: /data
+      sizeGB: 1
+
+  - type: web
+    name: delta-frontend
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    plan: free
+    envVars:
+      - key: VITE_API_URL
+        sync: false
+    dockerCommand: node .output/server/index.mjs
