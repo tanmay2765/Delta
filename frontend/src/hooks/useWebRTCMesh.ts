@@ -78,6 +78,16 @@ export function useWebRTCMesh(
     }
   }, [localStream]);
 
+  const ensureRecvTransceivers = useCallback((pc: RTCPeerConnection) => {
+    const kinds: Array<"audio" | "video"> = ["audio", "video"];
+    for (const kind of kinds) {
+      const hasTransceiver = pc.getTransceivers().some((t) => t.receiver.track?.kind === kind);
+      if (!hasTransceiver) {
+        pc.addTransceiver(kind, { direction: "recvonly" });
+      }
+    }
+  }, []);
+
   const createPeerConnection = useCallback(
     (remoteId: string) => {
       let pc = peersRef.current.get(remoteId);
@@ -113,18 +123,8 @@ export function useWebRTCMesh(
       peersRef.current.set(remoteId, pc);
       return pc;
     },
-    [attachLocalTracks, closePeer, ensureRecvTransceivers, selfParticipantId, sendSignaling, updateRemoteStream],
+    [attachLocalTracks, closePeer, ensureRecvTransceivers, localStream, selfParticipantId, sendSignaling, updateRemoteStream],
   );
-
-  const ensureRecvTransceivers = useCallback((pc: RTCPeerConnection) => {
-    const kinds: Array<"audio" | "video"> = ["audio", "video"];
-    for (const kind of kinds) {
-      const hasTransceiver = pc.getTransceivers().some((t) => t.receiver.track?.kind === kind);
-      if (!hasTransceiver) {
-        pc.addTransceiver(kind, { direction: "recvonly" });
-      }
-    }
-  }, []);
 
   const createOffer = useCallback(
     async (remoteId: string) => {

@@ -7,10 +7,12 @@ RUN npm ci
 
 COPY . .
 
-ARG VITE_API_URL
+# Render injects dashboard env vars at build time; ARG picks them up for Vite.
+ARG VITE_API_URL=""
 ENV VITE_API_URL=$VITE_API_URL
 ENV NITRO_PRESET=node-server
 
+RUN test -n "$VITE_API_URL" || echo "WARNING: VITE_API_URL is empty — API calls will fall back to localhost"
 RUN npm run build
 
 FROM node:22-alpine
