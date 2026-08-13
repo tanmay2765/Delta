@@ -71,7 +71,13 @@ function NewMeeting() {
           : await api.joinMeeting(createdMeeting.meetingId, hostName, { micOn, cameraOn });
 
       if (!joined.participantId || !joined.sessionToken) {
-        setEnterError("Could not enter meeting. Please try again.");
+        if (approvalRequired && !createdMeeting.hostSessionToken) {
+          setEnterError(
+            "Could not enter as host. Redeploy the backend, then start a new meeting.",
+          );
+        } else {
+          setEnterError("Could not enter meeting. Please try again.");
+        }
         return;
       }
 
