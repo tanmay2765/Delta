@@ -55,6 +55,54 @@ def active_participants(meeting: Meeting) -> list[Participant]:
     return [participant for participant in meeting.participants if participant.is_active]
 
 
+def find_active_participant_by_name(
+    db: Session,
+    meeting: Meeting,
+    display_name: str,
+    *,
+    exclude_host: bool = True,
+) -> Participant | None:
+    query = db.query(Participant).filter(
+        Participant.meeting_id == meeting.id,
+        Participant.display_name == display_name,
+        Participant.is_active.is_(True),
+    )
+    if exclude_host:
+        query = query.filter(Participant.is_host.is_(False))
+    return query.first()
+
+
+def has_approved_join_request(db: Session, meeting: Meeting, display_name: str) -> bool:
+    return (
+        db.query(JoinRequest)
+        .filter(
+            JoinRequest.meeting_id == meeting.id,
+            JoinRequest.display_name == display_name,
+            JoinRequest.status == "approved",
+        )
+        .first()
+        is not None
+    )
+
+
+def close_pending_join_requests(
+    db: Session,
+    meeting: Meeting,
+    display_name: str,
+    *,
+    except_request_id: int | None = None,
+) -> None:
+    query = db.query(JoinRequest).filter(
+        JoinRequest.meeting_id == meeting.id,
+        JoinRequest.display_name == display_name,
+        JoinRequest.status == "pending",
+    )
+    if except_request_id is not None:
+        query = query.filter(JoinRequest.id != except_request_id)
+    for pending in query.all():
+        pending.status = "denied"
+
+
 def _serialize_datetime(value: datetime | None) -> str | None:
     if value is None:
         return None
@@ -323,6 +371,16 @@ def join_meeting(
     cleaned_name = display_name.strip()
 
     if meeting.join_policy == "approval_required":
+        existing = find_active_participant_by_name(db, meeting, cleaned_name)
+        if existing and has_approved_join_request(db, meeting, cleaned_name):
+            existing.mic_on = mic_on if existing.mic_allowed else False
+            existing.camera_on = camera_on if existing.camera_allowed else False
+            close_pending_join_requests(db, meeting, cleaned_name)
+            db.commit()
+            db.refresh(existing)
+            db.refresh(meeting)
+            return meeting, existing, "joined", None
+
         pending = (
             db.query(JoinRequest)
             .filter(
@@ -480,12 +538,18 @@ def list_join_requests(
     host_session_token: str,
 ) -> list[JoinRequest]:
     meeting, _ = verify_host_session(db, meeting_identifier, host_participant_id, host_session_token)
-    return (
+    active_names = {
+        participant.display_name
+        for participant in active_participants(meeting)
+        if not participant.is_host
+    }
+    requests = (
         db.query(JoinRequest)
         .filter(JoinRequest.meeting_id == meeting.id, JoinRequest.status == "pending")
         .order_by(JoinRequest.created_at.asc())
         .all()
     )
+    return [request for request in requests if request.display_name not in active_names]
 
 
 def approve_join_request(
@@ -507,6 +571,14 @@ def approve_join_request(
     if join_request.status != "pending":
         raise ValueError("Join request is not pending")
 
+    existing = find_active_participant_by_name(db, meeting, join_request.display_name)
+    if existing:
+        join_request.status = "approved"
+        close_pending_join_requests(db, meeting, join_request.display_name, except_request_id=request_id)
+        db.commit()
+        db.refresh(join_request)
+        return join_request, existing
+
     participant = Participant(
         meeting_id=meeting.id,
         display_name=join_request.display_name,
@@ -521,6 +593,7 @@ def approve_join_request(
     )
     join_request.status = "approved"
     db.add(participant)
+    close_pending_join_requests(db, meeting, join_request.display_name, except_request_id=request_id)
     db.commit()
     db.refresh(join_request)
     db.refresh(participant)

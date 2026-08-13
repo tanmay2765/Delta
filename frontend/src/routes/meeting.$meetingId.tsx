@@ -335,6 +335,7 @@ function MeetingRoom() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["join-requests", meetingId] });
+      queryClient.invalidateQueries({ queryKey: ["meeting", meetingId] });
     },
   });
 

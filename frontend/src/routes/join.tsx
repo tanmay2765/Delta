@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { MediaPermissionPrompt } from "@/components/meetings/media-permission-prompt";
 import { MediaPreview } from "@/components/meetings/media-preview";
@@ -37,6 +37,7 @@ function JoinMeeting() {
   const [error, setError] = useState("");
   const [awaitingApproval, setAwaitingApproval] = useState(false);
   const [resolvedMeetingId, setResolvedMeetingId] = useState<string | null>(null);
+  const enteringRef = useRef(false);
   const { stream, cameraOn, micOn, setCameraOn, setMicOn, requestAccess, hasStream, isRequesting, error: mediaError } = useLocalMedia(true, true);
 
   useEffect(() => {
@@ -104,25 +105,33 @@ function JoinMeeting() {
   });
 
   useEffect(() => {
-    if (!admissionQuery.data?.admitted || !waitingMeetingId) return;
+    if (!admissionQuery.data?.admitted || !waitingMeetingId || enteringRef.current) return;
 
+    enteringRef.current = true;
     void (async () => {
-      const result = await api.joinMeeting(waitingMeetingId, name.trim(), { micOn, cameraOn });
-      if (!result.participantId || !result.sessionToken) return;
+      try {
+        const result = await api.joinMeeting(waitingMeetingId, name.trim(), { micOn, cameraOn });
+        if (!result.participantId || !result.sessionToken) {
+          enteringRef.current = false;
+          return;
+        }
 
-      setMeetingSession(waitingMeetingId, {
-        participantId: result.participantId,
-        displayName: name.trim(),
-        isHost: Boolean(result.isHost),
-        sessionToken: result.sessionToken,
-      });
-      if (stream?.active) setSharedMediaStream(stream);
-      navigate({
-        to: "/meeting/$meetingId",
-        params: { meetingId: waitingMeetingId },
-      });
+        setMeetingSession(waitingMeetingId, {
+          participantId: result.participantId,
+          displayName: name.trim(),
+          isHost: Boolean(result.isHost),
+          sessionToken: result.sessionToken,
+        });
+        if (stream?.active) setSharedMediaStream(stream);
+        navigate({
+          to: "/meeting/$meetingId",
+          params: { meetingId: waitingMeetingId },
+        });
+      } catch {
+        enteringRef.current = false;
+      }
     })();
-  }, [admissionQuery.data?.admitted, waitingMeetingId, name, micOn, cameraOn, navigate]);
+  }, [admissionQuery.data?.admitted, waitingMeetingId, name, micOn, cameraOn, navigate, stream]);
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
