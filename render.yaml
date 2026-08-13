@@ -1,5 +1,6 @@
-# Optional: deploy via Render Blueprint (https://render.com)
-# Connect repo → New Blueprint → select render.yaml
+# Render Blueprint — FREE tier (no paid disk)
+# Dashboard: New → Blueprint → connect github.com/tanmay2765/Delta
+# After deploy, set CORS_ORIGINS and VITE_API_URL manually (see LIVE_DEPLOY.md)
 
 services:
   - type: web
@@ -13,13 +14,9 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        value: sqlite:////data/delta.db
+        value: sqlite:///./delta.db
       - key: CORS_ORIGINS
         sync: false
-    disk:
-      name: delta-data
-      mountPath: /data
-      sizeGB: 1
 
   - type: web
     name: delta-frontend
@@ -30,4 +27,5 @@ services:
     envVars:
       - key: VITE_API_URL
         sync: false
-    dockerCommand: node .output/server/index.mjs
+      - key: PORT
+        value: "8081"

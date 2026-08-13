@@ -1,0 +1,23 @@
+# Fly.io frontend
+# Set backend URL first, then: cd frontend && fly deploy --build-arg VITE_API_URL=https://delta-meet-api.fly.dev
+
+app = 'delta-meet-web'
+primary_region = 'bom'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[env]
+  PORT = '8081'
+
+[http_service]
+  internal_port = 8081
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
+[vm]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1

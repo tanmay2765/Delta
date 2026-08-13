@@ -1,87 +1,122 @@
-# Deploy Delta Meet Live (Railway — recommended)
+# Deploy Delta Meet Live — FREE options (no Railway trial needed)
 
-This gets you a **public HTTPS URL** for both frontend and backend. Camera/mic work because the site is served over HTTPS.
+Railway trial expired? Use one of these **$0** options instead. All provide **HTTPS** (required for camera/mic).
 
-**Time:** ~15 minutes  
-**Cost:** Railway free trial / ~$5/mo after trial
+| Option | Cost | Best for | WebSockets | DB persists |
+|--------|------|----------|------------|-------------|
+| **A. Render** | Free | Easiest, evaluation/demo | Yes | Until redeploy* |
+| **B. Fly.io** | Free allowance | Always-on feel | Yes | Yes (volume) |
+| **C. Oracle Cloud VPS** | Free forever | Long-term, full control | Yes | Yes |
+| D. Railway | ~$5/mo after trial | Easiest if paying | Yes | Yes |
+
+\* Render free has no persistent disk — database re-seeds automatically on each deploy (fine for evaluation).
 
 ---
 
-## What you do (3 steps)
+## Option A — Render (recommended FREE)
 
-### Step 1 — Push code to GitHub
+**Time:** ~10 minutes · **Cost:** $0
 
-If you haven't pushed the latest code yet, run in Terminal:
+### Step 1 — Push code
 
 ```bash
 cd ~/Documents/Delta
-git add -A
-git commit -m "Production deploy: Docker, host controls, Zoom UI"
 git push origin main
 ```
 
-Repo: https://github.com/tanmay2765/Delta
+### Step 2 — Deploy with Blueprint
 
----
+1. Go to **[render.com](https://render.com)** → Sign up with GitHub
+2. **New +** → **Blueprint**
+3. Connect repo `tanmay2765/Delta`
+4. Render reads `render.yaml` and creates 2 services
+5. When prompted for env vars, set:
+   - `VITE_API_URL` → leave blank for now
+   - `CORS_ORIGINS` → leave blank for now
+6. Click **Apply**
 
-### Step 2 — Deploy backend on Railway
+Wait ~5–10 min for both services to build.
 
-1. Go to **[railway.app](https://railway.app)** → Sign in with GitHub
-2. **New Project** → **Deploy from GitHub repo** → select `tanmay2765/Delta`
-3. Railway creates one service. Click it → **Settings**:
-   - **Root Directory:** leave empty (repo root)
-   - **Dockerfile Path:** `backend/Dockerfile`
-   - **Watch Paths:** `backend/**`
-4. **Variables** tab — add:
+### Step 3 — Wire URLs together
 
-   | Variable | Value |
-   |----------|-------|
-   | `SECRET_KEY` | Run: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` |
-   | `DATABASE_URL` | `sqlite:////data/delta.db` |
-   | `CORS_ORIGINS` | *(leave empty for now — set after Step 3)* |
-
-5. **Volumes** tab → **Add Volume**:
-   - Mount path: `/data`
-6. **Settings** → **Networking** → **Generate Domain**
-7. Copy your backend URL, e.g. `https://delta-backend-production-xxxx.up.railway.app`
-8. Test: open `https://YOUR-BACKEND-URL/` — should show `{"message":"Delta Zoom Clone API is running"}`
-
----
-
-### Step 3 — Deploy frontend on Railway
-
-1. In the same Railway project → **+ New** → **GitHub Repo** → same `Delta` repo
-2. **Settings** for the new service:
-   - **Dockerfile Path:** `frontend/Dockerfile`
-   - **Watch Paths:** `frontend/**`
-3. **Variables** tab:
-
-   | Variable | Value |
-   |----------|-------|
-   | `VITE_API_URL` | Your backend URL from Step 2 (no trailing slash) |
-   | `PORT` | `8081` |
-
-4. **Networking** → **Generate Domain** → copy frontend URL, e.g. `https://delta-frontend-production-xxxx.up.railway.app`
-
-5. Go back to **backend service** → **Variables** → set:
-
+1. Open **delta-backend** service → copy URL (e.g. `https://delta-backend-xxxx.onrender.com`)
+2. Test: open that URL → `{"message":"Delta Zoom Clone API is running"}`
+3. Open **delta-frontend** service → **Environment** → set:
    ```
-   CORS_ORIGINS=https://YOUR-FRONTEND-URL.up.railway.app
+   VITE_API_URL=https://delta-backend-xxxx.onrender.com
    ```
+4. **Manual Deploy** frontend (required — API URL is baked at build time)
+5. Copy frontend URL (e.g. `https://delta-frontend-xxxx.onrender.com`)
+6. Open **delta-backend** → **Environment** → set:
+   ```
+   CORS_ORIGINS=https://delta-frontend-xxxx.onrender.com
+   ```
+7. **Manual Deploy** backend
 
-6. **Redeploy backend** (Deployments → Redeploy) so CORS picks up the frontend URL.
+### Step 4 — Open your app
 
-7. Open **frontend URL** in browser → dashboard should load with seeded meetings.
+Visit your **frontend URL**. Dashboard should load with seeded meetings.
+
+> **Note:** Render free tier spins down after ~15 min idle. First visit may take 30–60 seconds to wake up.
 
 ---
 
-## Verify it works
+## Option B — Fly.io (free allowance)
 
-1. Open your **frontend URL**
-2. Dashboard shows meetings + activity chart
-3. **New Meeting** → enable camera/mic → **Enter Meeting**
-4. Open incognito → **Join** with meeting ID
-5. Both participants see video (WebRTC)
+**Time:** ~15 minutes · **Cost:** $0 within free allowance
+
+```bash
+# Install CLI
+brew install flyctl
+fly auth login
+
+# Backend
+cd ~/Documents/Delta/backend
+fly launch --no-deploy    # name: delta-meet-api, region: bom (Mumbai)
+fly secrets set SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+fly volumes create delta_data --region bom --size 1
+fly deploy
+# Copy URL: https://delta-meet-api.fly.dev
+
+# Frontend (replace with your backend URL)
+cd ../frontend
+fly launch --no-deploy    # name: delta-meet-web
+fly deploy --build-arg VITE_API_URL=https://delta-meet-api.fly.dev
+
+# CORS on backend
+cd ../backend
+fly secrets set CORS_ORIGINS=https://delta-meet-web.fly.dev
+```
+
+---
+
+## Option C — Oracle Cloud Always Free VPS
+
+Truly free forever (ARM VM). Run everything with Docker:
+
+1. Create free VM at [cloud.oracle.com](https://cloud.oracle.com) (Always Free tier, Ubuntu 22.04)
+2. SSH in, install Docker
+3. Clone repo, set `.env`, run `docker compose up --build -d`
+4. Point a domain (or use Cloudflare Tunnel) for HTTPS
+
+See `DEPLOY.md` for Docker Compose env vars.
+
+---
+
+## Option D — Railway (paid)
+
+If you upgrade Railway (~$5/mo), follow the original Railway section in `DEPLOY.md`.
+
+---
+
+## After deploy — verify
+
+1. Open frontend URL → dashboard with meetings
+2. **New Meeting** → enable camera → enter
+3. Incognito → **Join** with meeting ID
+4. Video works between both tabs
+
+Demo login (auto): `demo@delta.com` / `demo123456`
 
 ---
 
@@ -89,32 +124,23 @@ Repo: https://github.com/tanmay2765/Delta
 
 | Problem | Fix |
 |---------|-----|
-| Frontend loads but API fails | Check `VITE_API_URL` matches backend domain exactly; redeploy frontend after changing it |
-| CORS error in browser console | Set `CORS_ORIGINS` on backend to exact frontend URL (https, no trailing slash); redeploy backend |
-| Camera/mic blocked | Site must be HTTPS (Railway provides this automatically) |
-| Login lost after redeploy | `SECRET_KEY` must stay the same — don't regenerate it |
-| WebSocket fails | Use Railway (supports WebSockets). Don't use static-only hosts for backend |
-| Empty database | Backend auto-seeds on first start. Check backend logs for errors |
+| Render slow first load | Free tier cold start — wait 60s, refresh |
+| CORS error | `CORS_ORIGINS` must exactly match frontend URL (https, no `/` at end) |
+| API 404 from frontend | Redeploy frontend after setting `VITE_API_URL` |
+| WebSocket fails | Don't use static-only hosts for backend; Render/Fly web services work |
+| DB empty after Render redeploy | Normal on free tier — auto-seeds demo data on startup |
+| Camera blocked | Must use HTTPS URL (not http) |
 
 ---
 
-## Alternative: Docker on a VPS
+## Quick comparison vs Railway
 
-If you have a DigitalOcean/Linode VPS with Docker:
+| | Railway (paid) | Render (free) |
+|--|--------------|---------------|
+| Cost | ~$5/mo | $0 |
+| Cold starts | Minimal | ~30–60s after idle |
+| Persistent DB | Yes (volume) | No on free (re-seeds) |
+| Setup | Dashboard clicks | Blueprint or dashboard |
+| Good for evaluation | Yes | **Yes** |
 
-```bash
-cd ~/Documents/Delta
-cp .env.example .env
-# Edit .env: SECRET_KEY, VITE_API_URL=https://api.yourdomain.com, CORS_ORIGINS=https://yourdomain.com
-docker compose up --build -d
-```
-
-Put Nginx + Certbot in front for HTTPS.
-
----
-
-## After deploy — share these URLs
-
-- **App (share with users):** `https://YOUR-FRONTEND-URL.up.railway.app`
-- **API docs:** `https://YOUR-BACKEND-URL.up.railway.app/docs`
-- **Demo login:** `demo@delta.com` / `demo123456` (auto-login on first visit)
+**For your evaluation submission, Render free is enough.**
