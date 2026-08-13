@@ -207,6 +207,9 @@ async def meeting_websocket(
                 continue
 
             if not meeting_hub.has_participant(meeting_id, target_id):
+                relay = {key: value for key, value in payload.items() if key != "to"}
+                relay["from"] = participant_id
+                await meeting_hub.send_to(meeting_id, target_id, relay)
                 continue
 
             relay = {key: value for key, value in payload.items() if key != "to"}

@@ -63,7 +63,8 @@ export function useLocalMedia(initialCameraOn = true, initialMicOn = true) {
         audio: true,
       });
       return adoptStream(media);
-    } catch {
+    } catch (error) {
+      console.error("[WebRTC] getUserMedia failed", error);
       setError(
         "Could not access camera or microphone. Click Allow in the browser prompt, or check site permissions in your browser settings.",
       );

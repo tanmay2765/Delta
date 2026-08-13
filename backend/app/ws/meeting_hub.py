@@ -8,6 +8,7 @@ class MeetingHub:
     def __init__(self) -> None:
         self._rooms: dict[str, dict[int, WebSocket]] = {}
         self._socket_meta: dict[WebSocket, tuple[str, int]] = {}
+        self._pending: dict[tuple[str, int], list[dict[str, Any]]] = {}
         self._lock = asyncio.Lock()
 
     @staticmethod
@@ -20,6 +21,17 @@ class MeetingHub:
         async with self._lock:
             self._rooms.setdefault(key, {})[participant_id] = websocket
             self._socket_meta[websocket] = (key, participant_id)
+
+        await self._flush_pending(meeting_id, participant_id)
+
+    async def _flush_pending(self, meeting_id: str, participant_id: int) -> None:
+        key = self._room_key(meeting_id)
+        pending_key = (key, participant_id)
+        async with self._lock:
+            messages = self._pending.pop(pending_key, [])
+
+        for message in messages:
+            await self.send_to(meeting_id, participant_id, message, queue_if_offline=False)
 
     async def disconnect(self, meeting_id: str, websocket: WebSocket) -> tuple[str, int] | None:
         key = self._room_key(meeting_id)
@@ -38,12 +50,45 @@ class MeetingHub:
             return key, participant_id
         return None
 
-    async def send_to(self, meeting_id: str, target_participant_id: int, message: dict[str, Any]) -> bool:
+    async def send_to(
+        self,
+        meeting_id: str,
+        target_participant_id: int,
+        message: dict[str, Any],
+        *,
+        queue_if_offline: bool = True,
+    ) -> bool:
         key = self._room_key(meeting_id)
         async with self._lock:
             websocket = self._rooms.get(key, {}).get(target_participant_id)
 
         if websocket is None:
+            if queue_if_offline and message.get("type") in {
+                "webrtc_offer",
+                "webrtc_answer",
+                "webrtc_ice",
+                "webrtc_ready",
+            }:
+                async with self._lock:
+                    queue = self._pending.setdefault((key, target_participant_id), [])
+                    if message.get("type") == "webrtc_ice":
+                        candidate = message.get("candidate", {})
+                        fingerprint = (
+                            f"{candidate.get('sdpMid')}:{candidate.get('sdpMLineIndex')}:"
+                            f"{candidate.get('candidate')}"
+                        )
+                        if any(
+                            f"{item.get('candidate', {}).get('sdpMid')}:"
+                            f"{item.get('candidate', {}).get('sdpMLineIndex')}:"
+                            f"{item.get('candidate', {}).get('candidate')}" == fingerprint
+                            for item in queue
+                            if item.get("type") == "webrtc_ice"
+                        ):
+                            return False
+                    queue.append(message)
+                    if len(queue) > 200:
+                        del queue[:-200]
+                return False
             return False
 
         try:

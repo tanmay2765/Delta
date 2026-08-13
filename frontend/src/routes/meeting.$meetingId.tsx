@@ -14,6 +14,7 @@ import { DeltaAvatar } from "@/components/ui/delta-avatar";
 import { displayNameFromUser, getStoredUser } from "@/lib/auth-storage";
 import { useLocalMedia } from "@/hooks/useLocalMedia";
 import { useMeetingRealtime } from "@/hooks/useMeetingRealtime";
+import { WebRtcDebugPanel } from "@/components/meetings/webrtc-debug-panel";
 import { useWebRTCMesh, type SignalingMessage } from "@/hooks/useWebRTCMesh";
 import { api, mapMeetingFromBackend, parseUtcTimestamp } from "@/lib/api";
 import {
@@ -66,6 +67,7 @@ function MeetingRoom() {
   const [unreadChat, setUnreadChat] = useState(0);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [timer, setTimer] = useState(0);
+  const [debugOpen, setDebugOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -207,7 +209,15 @@ function MeetingRoom() {
     [meeting?.participants, session?.participantId],
   );
 
-  const { remoteStreams, handleSignalingMessage, syncPeers } = useWebRTCMesh(
+  const {
+    remoteStreams,
+    handleSignalingMessage,
+    syncPeers,
+    peerDiagnostics,
+    turnAvailable,
+    iceReady,
+  } = useWebRTCMesh(
+    meetingId,
     session?.participantId,
     stream,
     remoteParticipants,
@@ -219,6 +229,16 @@ function MeetingRoom() {
     void handleSignalingMessage(message);
   };
   syncPeersRef.current = syncPeers;
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.shiftKey && event.key.toLowerCase() === "d") {
+        setDebugOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     if (!sessionReady || hasStream || isRequesting) return;
@@ -548,6 +568,15 @@ function MeetingRoom() {
               Waiting for the host to allow your microphone and camera.
             </p>
           )}
+
+          <WebRtcDebugPanel
+            open={debugOpen}
+            onClose={() => setDebugOpen(false)}
+            diagnostics={peerDiagnostics}
+            turnAvailable={turnAvailable}
+            iceReady={iceReady}
+            signalingReady={signalingReady}
+          />
         </div>
 
         <div className="relative shrink-0">

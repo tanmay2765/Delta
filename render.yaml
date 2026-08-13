@@ -21,6 +21,14 @@ services:
         sync: false
       - key: METERED_TURN_CREDENTIALS_URL
         sync: false
+      - key: TURN_URLS
+        sync: false
+      - key: TURN_USERNAME
+        sync: false
+      - key: TURN_CREDENTIAL
+        sync: false
+      - key: STUN_URLS
+        sync: false
 
   - type: web
     name: delta-frontend
@@ -30,6 +38,14 @@ services:
     plan: free
     envVars:
       - key: VITE_API_URL
+        sync: false
+      - key: VITE_TURN_URL
+        sync: false
+      - key: VITE_TURN_USERNAME
+        sync: false
+      - key: VITE_TURN_CREDENTIAL
+        sync: false
+      - key: VITE_WEBRTC_DEBUG
         sync: false
       - key: PORT
         value: "8081"
