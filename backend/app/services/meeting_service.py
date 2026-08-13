@@ -55,6 +55,12 @@ def active_participants(meeting: Meeting) -> list[Participant]:
     return [participant for participant in meeting.participants if participant.is_active]
 
 
+def _serialize_datetime(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return value.isoformat()
+
+
 def participant_to_dict(participant: Participant, *, include_session_token: bool = False) -> dict:
     payload = {
         "id": participant.id,
@@ -65,7 +71,7 @@ def participant_to_dict(participant: Participant, *, include_session_token: bool
         "camera_allowed": participant.camera_allowed,
         "mic_on": participant.mic_on,
         "camera_on": participant.camera_on,
-        "joined_at": participant.joined_at,
+        "joined_at": _serialize_datetime(participant.joined_at),
     }
     if include_session_token:
         payload["session_token"] = participant.session_token
@@ -661,13 +667,13 @@ def meeting_to_response(meeting: Meeting) -> dict:
         "title": meeting.title,
         "description": meeting.description,
         "host_name": meeting.host_name,
-        "scheduled_at": meeting.scheduled_at,
+        "scheduled_at": _serialize_datetime(meeting.scheduled_at),
         "duration": meeting.duration,
         "invite_code": meeting.invite_code,
         "join_policy": meeting.join_policy,
         "status": meeting.status,
-        "created_at": meeting.created_at,
-        "started_at": meeting.started_at,
+        "created_at": _serialize_datetime(meeting.created_at),
+        "started_at": _serialize_datetime(meeting.started_at),
         "participants": [
             participant_to_dict(participant)
             for participant in active_participants(meeting)
