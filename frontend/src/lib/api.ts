@@ -15,6 +15,12 @@ import type {
 
 export const API_URL = resolveApiUrl();
 
+/** Parse backend UTC ISO timestamps (with or without trailing Z). */
+export function parseUtcTimestamp(value: string): number {
+  const normalized = value.endsWith("Z") ? value : `${value}Z`;
+  return Date.parse(normalized);
+}
+
 function resolveApiUrl(): string {
   const baked = import.meta.env["VITE_API_URL"] ?? "http://localhost:8000";
   if (typeof window === "undefined") return baked;

@@ -106,7 +106,8 @@ def close_pending_join_requests(
 def _serialize_datetime(value: datetime | None) -> str | None:
     if value is None:
         return None
-    return value.isoformat()
+    # Naive datetimes are stored as UTC — suffix Z so browsers parse correctly.
+    return value.isoformat() + "Z"
 
 
 def participant_to_dict(participant: Participant, *, include_session_token: bool = False) -> dict:
@@ -330,9 +331,8 @@ def start_meeting_session(
     if meeting.status == "ended":
         raise ValueError("Meeting has ended")
 
-    non_host_count = sum(1 for p in active_participants(meeting) if not p.is_host)
     started_now = False
-    if meeting.started_at is None or non_host_count == 0:
+    if meeting.started_at is None:
         meeting.started_at = datetime.utcnow()
         db.commit()
         db.refresh(meeting)

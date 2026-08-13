@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine, run_migrations
-from app.routers import auth, meetings, realtime
+from app.routers import auth, meetings, realtime, turn
 from seed import seed_if_empty
 
 Base.metadata.create_all(bind=engine)
@@ -43,6 +43,7 @@ app.add_middleware(
 app.include_router(meetings.router)
 app.include_router(realtime.router)
 app.include_router(auth.router)
+app.include_router(turn.router)
 
 
 @app.get("/")

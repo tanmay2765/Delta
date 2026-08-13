@@ -79,5 +79,9 @@ class MeetingHub:
         key = self._room_key(meeting_id)
         return participant_id in self._rooms.get(key, {})
 
+    def participant_ids(self, meeting_id: str) -> list[int]:
+        key = self._room_key(meeting_id)
+        return list(self._rooms.get(key, {}).keys())
+
 
 meeting_hub = MeetingHub()

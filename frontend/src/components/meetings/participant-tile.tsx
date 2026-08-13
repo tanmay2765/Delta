@@ -40,7 +40,8 @@ export function ParticipantTile({
     if (!video) return;
     video.srcObject = showLiveVideo ? stream ?? null : null;
     if (showLiveVideo && !participant.isSelf) {
-      video.muted = false;
+      // Audio plays through the hidden <audio> element for reliable autoplay.
+      video.muted = true;
       void video.play().catch(() => {});
     }
   }, [showLiveVideo, stream, participant.isSelf]);
@@ -48,12 +49,24 @@ export function ParticipantTile({
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const useAudioElement = playRemoteAudio && !showLiveVideo;
-    audio.srcObject = useAudioElement ? stream ?? null : null;
-    if (useAudioElement) {
+    audio.srcObject = playRemoteAudio ? stream ?? null : null;
+    if (playRemoteAudio) {
       void audio.play().catch(() => {});
     }
-  }, [playRemoteAudio, showLiveVideo, stream]);
+  }, [playRemoteAudio, stream]);
+
+  useEffect(() => {
+    if (!stream || participant.isSelf) return;
+
+    const resume = () => {
+      void videoRef.current?.play().catch(() => {});
+      void audioRef.current?.play().catch(() => {});
+    };
+
+    stream.addEventListener("addtrack", resume);
+    resume();
+    return () => stream.removeEventListener("addtrack", resume);
+  }, [stream, participant.isSelf]);
 
   const resumePlayback = () => {
     if (participant.isSelf) return;
@@ -99,7 +112,7 @@ export function ParticipantTile({
         )}
       </span>
 
-      {playRemoteAudio && !showLiveVideo && (
+      {playRemoteAudio && (
         <audio ref={audioRef} autoPlay playsInline className="hidden" />
       )}
 

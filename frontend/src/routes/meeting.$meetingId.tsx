@@ -15,7 +15,7 @@ import { displayNameFromUser, getStoredUser } from "@/lib/auth-storage";
 import { useLocalMedia } from "@/hooks/useLocalMedia";
 import { useMeetingRealtime } from "@/hooks/useMeetingRealtime";
 import { useWebRTCMesh, type SignalingMessage } from "@/hooks/useWebRTCMesh";
-import { api, mapMeetingFromBackend } from "@/lib/api";
+import { api, mapMeetingFromBackend, parseUtcTimestamp } from "@/lib/api";
 import {
   clearMeetingSession,
   getMeetingSession,
@@ -221,9 +221,9 @@ function MeetingRoom() {
   syncPeersRef.current = syncPeers;
 
   useEffect(() => {
-    if (!sessionReady || !canUseMedia || hasStream || isRequesting) return;
+    if (!sessionReady || hasStream || isRequesting) return;
     void requestAccess();
-  }, [sessionReady, canUseMedia, hasStream, isRequesting, requestAccess]);
+  }, [sessionReady, hasStream, isRequesting, requestAccess]);
 
   const { data: joinRequests = [] } = useQuery({
     queryKey: ["join-requests", meetingId],
@@ -256,8 +256,12 @@ function MeetingRoom() {
       setTimer(0);
       return;
     }
-    const start = new Date(meeting.startedAt).getTime();
-    const tick = () => setTimer(Math.max(0, Math.floor((Date.now() - start) / 1000)));
+    const parsed = parseUtcTimestamp(meeting.startedAt);
+    if (Number.isNaN(parsed)) {
+      setTimer(0);
+      return;
+    }
+    const tick = () => setTimer(Math.max(0, Math.floor((Date.now() - parsed) / 1000)));
     tick();
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);

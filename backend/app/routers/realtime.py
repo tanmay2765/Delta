@@ -97,10 +97,23 @@ async def meeting_websocket(
 
     await meeting_hub.connect(meeting_id, participant_id, websocket)
 
+    existing_participant_ids = [
+        pid for pid in meeting_hub.participant_ids(meeting_id) if pid != participant_id
+    ]
+
     db = SessionLocal()
+    started_now = False
     try:
         meeting = meeting_service.get_meeting_details(db, meeting_id)
         if meeting:
+            participant = next(
+                (item for item in meeting.participants if item.id == participant_id),
+                None,
+            )
+            if participant and participant.is_host:
+                started_now = meeting_service.mark_meeting_started(db, meeting, participant)
+                if started_now:
+                    db.refresh(meeting)
             await websocket.send_json(
                 {
                     "type": "meeting_updated",
@@ -110,11 +123,21 @@ async def meeting_websocket(
     finally:
         db.close()
 
+    if started_now:
+        await broadcast_meeting_state(meeting_id)
+
     await meeting_hub.broadcast(
         meeting_id,
         {"type": "webrtc_ready", "from": participant_id},
         exclude_participant_id=participant_id,
     )
+
+    for existing_id in existing_participant_ids:
+        await meeting_hub.send_to(
+            meeting_id,
+            participant_id,
+            {"type": "webrtc_ready", "from": existing_id},
+        )
 
     try:
         while True:

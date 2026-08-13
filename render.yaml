@@ -17,6 +17,10 @@ services:
         value: sqlite:///./delta.db
       - key: CORS_ORIGINS
         sync: false
+      - key: METERED_TURN_API_KEY
+        sync: false
+      - key: METERED_TURN_CREDENTIALS_URL
+        sync: false
 
   - type: web
     name: delta-frontend
