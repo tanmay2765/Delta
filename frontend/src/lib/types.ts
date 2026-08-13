@@ -69,6 +69,8 @@ export interface CreatedMeeting {
   title: string;
   startTime?: string;
   inviteCode?: string;
+  hostParticipantId?: number;
+  hostSessionToken?: string;
 }
 
 export interface JoinMeetingResult {

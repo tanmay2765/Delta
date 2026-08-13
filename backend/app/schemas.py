@@ -137,6 +137,11 @@ class JoinMeetingResponse(BaseModel):
     join_request_id: int | None = None
 
 
+class InstantMeetingResponse(BaseModel):
+    meeting: MeetingResponse
+    host_participant: ParticipantResponse
+
+
 class JoinRequestActionResponse(BaseModel):
     join_request: JoinRequestResponse
     participant: ParticipantResponse | None = None

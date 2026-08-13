@@ -12,6 +12,7 @@ from app.schemas import (
     JoinRequestResponse,
     LeaveMeetingRequest,
     MeetingInviteCreate,
+    InstantMeetingResponse,
     MeetingInviteResponse,
     MeetingResponse,
     ParticipantMediaUpdate,
@@ -39,11 +40,11 @@ def _meeting_response(meeting) -> MeetingResponse:
     return MeetingResponse(**meeting_service.meeting_to_response(meeting))
 
 
-@router.post("/instant", response_model=MeetingResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/instant", response_model=InstantMeetingResponse, status_code=status.HTTP_201_CREATED)
 async def create_instant_meeting(
     payload: InstantMeetingCreate,
     db: Session = Depends(get_db),
-) -> MeetingResponse:
+) -> InstantMeetingResponse:
     meeting = meeting_service.create_instant_meeting(
         db,
         payload.host_name,
@@ -53,7 +54,11 @@ async def create_instant_meeting(
         mic_on=payload.mic_on,
         camera_on=payload.camera_on,
     )
-    return _meeting_response(meeting)
+    host = next(participant for participant in meeting.participants if participant.is_host)
+    return InstantMeetingResponse(
+        meeting=_meeting_response(meeting),
+        host_participant=_participant_response(host, include_token=True),
+    )
 
 
 @router.post("/schedule", response_model=MeetingResponse, status_code=status.HTTP_201_CREATED)

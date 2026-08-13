@@ -60,7 +60,16 @@ function NewMeeting() {
     if (!createdMeeting) return;
     setEnterError("");
     try {
-      const joined = await api.joinMeeting(createdMeeting.meetingId, hostName, { micOn, cameraOn });
+      const joined =
+        createdMeeting.hostParticipantId && createdMeeting.hostSessionToken
+          ? await api.joinMeeting(createdMeeting.meetingId, hostName, {
+              micOn,
+              cameraOn,
+              participantId: createdMeeting.hostParticipantId,
+              sessionToken: createdMeeting.hostSessionToken,
+            })
+          : await api.joinMeeting(createdMeeting.meetingId, hostName, { micOn, cameraOn });
+
       if (!joined.participantId || !joined.sessionToken) {
         setEnterError("Could not enter meeting. Please try again.");
         return;
@@ -69,7 +78,7 @@ function NewMeeting() {
       setMeetingSession(createdMeeting.meetingId, {
         participantId: joined.participantId,
         displayName: hostName,
-        isHost: true,
+        isHost: joined.isHost ?? true,
         sessionToken: joined.sessionToken,
       });
 

@@ -245,7 +245,10 @@ export const api = {
   },
 
   createInstantMeeting: async (input: CreateInstantMeetingInput): Promise<CreatedMeeting> => {
-    const meeting = await request<BackendMeeting>("/api/meetings/instant", {
+    const response = await request<{
+      meeting: BackendMeeting;
+      host_participant: BackendParticipant;
+    }>("/api/meetings/instant", {
       method: "POST",
       body: JSON.stringify({
         host_name: input.host,
@@ -256,12 +259,15 @@ export const api = {
         camera_on: input.cameraOn,
       }),
     });
+    const meeting = response.meeting;
     const meetingId = meeting.meeting_id.replace(/\D/g, "");
     return {
       meetingId,
       inviteLink: inviteLinkFor(meetingId, meeting.invite_code),
       title: meeting.title ?? input.title,
       inviteCode: meeting.invite_code,
+      hostParticipantId: response.host_participant.id,
+      hostSessionToken: response.host_participant.session_token,
     };
   },
 
