@@ -11,8 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY seed.py reset_db.py ./
 
-RUN mkdir -p /data
-ENV DATABASE_URL=sqlite:////data/delta.db
+ENV DATABASE_URL=sqlite:///./delta.db
 
 ENV PORT=8000
 EXPOSE 8000
