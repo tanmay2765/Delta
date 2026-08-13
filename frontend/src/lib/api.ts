@@ -80,10 +80,11 @@ function frontendOrigin() {
 }
 
 function inviteLinkFor(meetingId: string, inviteCode?: string) {
+  const digits = meetingId.replace(/\D/g, "");
   if (inviteCode) {
     return `${frontendOrigin()}/join?code=${inviteCode}`;
   }
-  return `${frontendOrigin()}/meeting/${meetingId.replace(/\D/g, "")}`;
+  return `${frontendOrigin()}/join?id=${digits}`;
 }
 
 function mapParticipant(participant: BackendParticipant, selfId?: number): import("./types").Participant {
