@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/layout/app-shell";
+import { useTheme } from "@/components/layout/theme-provider";
 import { GlassCard } from "@/components/ui/glass-card";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +32,7 @@ export const Route = createFileRoute("/settings")({
 });
 
 function SettingsPage() {
+  const { theme, setTheme } = useTheme();
   const [tab, setTab] = useState<SettingsTab>("General");
   const [settings, setSettings] = useState<SettingsState>(DEFAULTS);
 
@@ -73,6 +75,7 @@ function SettingsPage() {
         <GlassCard className="p-0">
           {tab === "General" && (
             <SettingsSection title="General">
+              <ThemeRow theme={theme} onChange={setTheme} />
               <ToggleRow label="Show pre-meeting preview" description="Display camera preview before joining." value={settings.showPreview} onChange={(v) => update({ showPreview: v })} />
               <ToggleRow label="HD video" description="Send video in high definition when available." value={settings.hdVideo} onChange={(v) => update({ hdVideo: v })} />
             </SettingsSection>
@@ -107,6 +110,38 @@ function SettingsSection({ title, children }: { title: string; children: React.R
       <h2 className="border-b border-glass-border px-6 py-4 text-lg font-semibold">{title}</h2>
       <div className="divide-y divide-glass-border">{children}</div>
     </section>
+  );
+}
+
+function ThemeRow({
+  theme,
+  onChange,
+}: {
+  theme: "dark" | "light";
+  onChange: (theme: "dark" | "light") => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 px-6 py-5">
+      <div>
+        <p className="font-medium">Appearance</p>
+        <p className="mt-1 text-sm text-muted-foreground">Switch between dark and light mode.</p>
+      </div>
+      <div className="flex shrink-0 gap-2">
+        {(["dark", "light"] as const).map((option) => (
+          <button
+            key={option}
+            type="button"
+            onClick={() => onChange(option)}
+            className={cn(
+              "rounded-lg px-3 py-1.5 text-sm capitalize",
+              theme === option ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+            )}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

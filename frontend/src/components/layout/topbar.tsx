@@ -1,6 +1,7 @@
-import { Bell, Download, LogOut, Mic, Search, Settings, User } from "lucide-react";
+import { Bell, Download, LogOut, Mic, Moon, Search, Settings, Sun, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { useTheme } from "@/components/layout/theme-provider";
 import { DeltaAvatar } from "@/components/ui/delta-avatar";
 import {
   DropdownMenu,
@@ -21,6 +22,7 @@ function greeting() {
 
 export function Topbar({ title }: { title: string }) {
   const navigate = useNavigate();
+  const { theme, toggleTheme } = useTheme();
   const [user, setUser] = useState<StoredUser | null>(null);
 
   useEffect(() => {
@@ -50,6 +52,15 @@ export function Topbar({ title }: { title: string }) {
           />
           <Mic className="absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         </div>
+
+        <button
+          type="button"
+          onClick={toggleTheme}
+          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          className="glass-soft grid h-11 w-11 place-items-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
+        >
+          {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+        </button>
 
         <button
           type="button"

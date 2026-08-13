@@ -28,6 +28,25 @@ function cloneStreamMap(streams: Map<string, MediaStream>) {
   return new Map(streams);
 }
 
+async function limitOutgoingBitrate(pc: RTCPeerConnection, maxKbps = 600) {
+  for (const sender of pc.getSenders()) {
+    if (sender.track?.kind !== "video") continue;
+    try {
+      const params = sender.getParameters();
+      if (!params.encodings?.length) {
+        params.encodings = [{}];
+      }
+      params.encodings[0] = {
+        ...params.encodings[0],
+        maxBitrate: maxKbps * 1000,
+      };
+      await sender.setParameters(params);
+    } catch {
+      // Browser may reject before negotiation completes.
+    }
+  }
+}
+
 export function useWebRTCMesh(
   selfParticipantId: number | undefined,
   localStream: MediaStream | null,
@@ -39,6 +58,8 @@ export function useWebRTCMesh(
   const pendingIceRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const negotiatingRef = useRef<Set<string>>(new Set());
   const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
+  const knownRemoteIdsRef = useRef<string>("");
+  const announcedStreamRef = useRef(false);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(() => new Map());
 
   const publishStreams = useCallback(() => {
@@ -168,6 +189,7 @@ export function useWebRTCMesh(
         if (localStream?.active) ensureRecvOnly(pc);
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
+        await limitOutgoingBitrate(pc);
         sendSignaling({ type: "webrtc_offer", to: Number(remoteId), sdp: offer });
       } catch {
         removeRemote(remoteId);
@@ -204,6 +226,7 @@ export function useWebRTCMesh(
         await pc.setRemoteDescription(new RTCSessionDescription(sdp));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
+        await limitOutgoingBitrate(pc);
         sendSignaling({ type: "webrtc_answer", to: Number(remoteId), sdp: answer });
         await flushIce(remoteId);
       } catch {
@@ -312,34 +335,46 @@ export function useWebRTCMesh(
         removeRemote(remoteId);
       }
     }
-
-    sendSignaling({ type: "webrtc_ready" });
   }, [
     isPolite,
     makeOffer,
     remoteParticipants,
     removeRemote,
     selfParticipantId,
-    sendSignaling,
     signalingReady,
   ]);
 
   useEffect(() => {
+    if (!selfParticipantId || !signalingReady) return;
+    const remoteKey = remoteParticipants
+      .map((participant) => participant.id)
+      .filter((id) => id !== String(selfParticipantId))
+      .sort()
+      .join(",");
+    if (remoteKey === knownRemoteIdsRef.current) return;
+    knownRemoteIdsRef.current = remoteKey;
     syncAll();
-  }, [remoteParticipants, signalingReady, localStream, syncAll]);
+  }, [remoteParticipants, selfParticipantId, signalingReady, syncAll]);
 
   useEffect(() => {
-    if (!localStream?.active || !signalingReady) return;
-    for (const remoteId of peersRef.current.keys()) {
-      const pc = peersRef.current.get(remoteId);
-      if (!pc) continue;
-      attachLocalTracks(pc);
-      if (!isPolite(remoteId) && pc.signalingState === "stable") {
+    if (!localStream?.active || !signalingReady || announcedStreamRef.current) return;
+    announcedStreamRef.current = true;
+    sendSignaling({ type: "webrtc_ready" });
+    for (const { id: remoteId } of remoteParticipants) {
+      if (remoteId === String(selfParticipantId)) continue;
+      if (!isPolite(remoteId)) {
         void makeOffer(remoteId);
       }
     }
-    sendSignaling({ type: "webrtc_ready" });
-  }, [attachLocalTracks, isPolite, localStream, makeOffer, sendSignaling, signalingReady]);
+  }, [
+    isPolite,
+    localStream,
+    makeOffer,
+    remoteParticipants,
+    selfParticipantId,
+    sendSignaling,
+    signalingReady,
+  ]);
 
   useEffect(() => {
     return () => {

@@ -221,16 +221,6 @@ function MeetingRoom() {
   syncPeersRef.current = syncPeers;
 
   useEffect(() => {
-    if (!signalingReady) return;
-    const interval = window.setInterval(() => syncPeersRef.current(), 5000);
-    const stop = window.setTimeout(() => window.clearInterval(interval), 30000);
-    return () => {
-      window.clearInterval(interval);
-      window.clearTimeout(stop);
-    };
-  }, [signalingReady]);
-
-  useEffect(() => {
     if (!sessionReady || !canUseMedia || hasStream || isRequesting) return;
     void requestAccess();
   }, [sessionReady, canUseMedia, hasStream, isRequesting, requestAccess]);

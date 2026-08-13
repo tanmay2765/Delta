@@ -11,7 +11,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
-import { DemoAuthBootstrap } from "@/components/layout/demo-auth-bootstrap";
+import { ThemeProvider } from "@/components/layout/theme-provider";
 
 function NotFoundComponent() {
   return (
@@ -102,9 +102,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('delta_theme');document.documentElement.classList.toggle('light',t==='light');document.documentElement.style.colorScheme=t==='light'?'light':'dark';}catch(e){}})();`,
+          }}
+        />
       </head>
       <body>
         {children}
@@ -119,9 +124,9 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <DemoAuthBootstrap>
+      <ThemeProvider>
         <Outlet />
-      </DemoAuthBootstrap>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

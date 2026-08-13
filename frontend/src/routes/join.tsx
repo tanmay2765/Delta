@@ -152,7 +152,11 @@ function JoinMeeting() {
 
     const sessionKey = digitsOnly.length >= 9 ? digitsOnly : identifier;
     const existing = getMeetingSession(sessionKey);
-    if (existing?.participantId && existing.sessionToken) {
+    if (
+      existing?.participantId &&
+      existing.sessionToken &&
+      existing.displayName.toLowerCase() === name.trim().toLowerCase()
+    ) {
       navigate({
         to: "/meeting/$meetingId",
         params: { meetingId: digitsOnly.length >= 9 ? digitsOnly : inviteQuery.data?.id ?? digitsOnly },
@@ -212,7 +216,7 @@ function JoinMeeting() {
                 label="Your Name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="How you'll appear to others"
+                placeholder="Use a unique name (e.g. Alex, Priya)"
                 required
               />
               <div className="mt-4 flex gap-3">

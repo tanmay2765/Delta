@@ -321,22 +321,6 @@ def join_meeting(
             return resumed_meeting, participant, "joined", None
 
     cleaned_name = display_name.strip()
-    existing = (
-        db.query(Participant)
-        .filter(
-            Participant.meeting_id == meeting.id,
-            Participant.display_name == cleaned_name,
-            Participant.is_active.is_(True),
-        )
-        .first()
-    )
-    if existing:
-        existing.mic_on = mic_on if existing.mic_allowed else False
-        existing.camera_on = camera_on if existing.camera_allowed else False
-        db.commit()
-        db.refresh(existing)
-        db.refresh(meeting)
-        return meeting, existing, "joined", None
 
     if meeting.join_policy == "approval_required":
         pending = (

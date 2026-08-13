@@ -108,6 +108,55 @@
     radial-gradient(90% 70% at 85% 100%, oklch(0.5 0.08 245 / 40%) 0%, transparent 60%);
 }
 
+html.light {
+  --background: oklch(0.98 0.004 260);
+  --foreground: oklch(0.18 0.02 260);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.02 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.02 260);
+
+  --primary: oklch(0.52 0.19 258);
+  --primary-foreground: oklch(0.99 0 0);
+  --primary-glow: oklch(0.62 0.16 245);
+
+  --secondary: oklch(0.95 0.008 260);
+  --secondary-foreground: oklch(0.22 0.02 260);
+
+  --muted: oklch(0.94 0.008 260);
+  --muted-foreground: oklch(0.45 0.02 260);
+
+  --accent: oklch(0.93 0.02 258);
+  --accent-foreground: oklch(0.18 0.02 260);
+
+  --destructive: oklch(0.55 0.22 22);
+  --destructive-foreground: oklch(0.99 0 0);
+  --success: oklch(0.55 0.16 150);
+  --success-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.72 0.14 75);
+
+  --border: oklch(0.2 0.02 260 / 12%);
+  --input: oklch(0.2 0.02 260 / 10%);
+  --ring: oklch(0.52 0.19 258);
+
+  --glass: oklch(1 0 0 / 72%);
+  --glass-strong: oklch(1 0 0 / 88%);
+  --glass-border: oklch(0.2 0.02 260 / 10%);
+
+  --rail: oklch(0.97 0.006 260);
+  --sidebar: oklch(0.97 0.006 260);
+  --sidebar-foreground: oklch(0.35 0.02 260);
+  --sidebar-accent: oklch(0.92 0.02 258);
+  --sidebar-border: oklch(0.2 0.02 260 / 8%);
+
+  --shadow-glass: 0 20px 60px -24px oklch(0.2 0.02 260 / 18%);
+  --shadow-glow: 0 0 0 1px oklch(0.52 0.19 258 / 25%), 0 12px 40px -12px oklch(0.52 0.19 258 / 35%);
+  --gradient-ambient:
+    radial-gradient(110% 80% at 50% 0%, oklch(0.75 0.06 250 / 35%) 0%, transparent 65%),
+    radial-gradient(90% 70% at 85% 100%, oklch(0.7 0.05 245 / 25%) 0%, transparent 60%);
+}
+
 @layer base {
   * {
     border-color: var(--color-border);
@@ -136,8 +185,8 @@
 }
 
 @utility glass-soft {
-  background: oklch(1 0 0 / 6%);
-  border: 1px solid oklch(1 0 0 / 10%);
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
   backdrop-filter: blur(18px) saturate(130%);
 }
 
